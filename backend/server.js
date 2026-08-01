@@ -78,6 +78,11 @@ app.use(cors({
   credentials: true
 }))
 app.use(express.json())
+
+// 💚 HEALTH CHECK — Render free-tier cold-start ping ke liye
+// Frontend/app isko boot pe call karta hai taaki server "wake up" ho jaye
+app.get("/health", (req, res) => res.json({ status: "ok" }))
+
 app.use("/orders", orderRoutes)
 
 // ⭐ NEW PPC SYSTEM ROUTES
