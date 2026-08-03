@@ -5,6 +5,12 @@ import dotenv from "dotenv"
 dotenv.config()
 
 import mongoose from "mongoose"
+import { getFirebaseAdmin } from "./utils/firebaseAdmin.js"
+
+// 💚 Server start hote hi ek baar check kar lo Firebase sahi se juda hai ya nahi
+// (asli push bhejne ke time bhi ye hi function call hota hai — yahan sirf status
+// pata karne ke liye pehle se call kar rahe hain)
+getFirebaseAdmin()
 
 mongoose
   .connect(process.env.MONGO_URI, { autoIndex: true })
