@@ -2083,12 +2083,27 @@ const productSalesMap = {}
 orders.forEach(o => {
   (o.items || []).forEach(item => {
     const pid = String(item.productId || item._id || "unknown")
-    const name = item.title || item.name || pid
+    const name = item.title || item.name || null   // ⭐ ID ko fallback mat banao
     if (!productSalesMap[pid]) productSalesMap[pid] = { name, total: 0, count: 0 }
+    else if (!productSalesMap[pid].name && name) productSalesMap[pid].name = name
     productSalesMap[pid].total += (item.price || 0) * (item.qty || item.quantity || 1)
     productSalesMap[pid].count += (item.qty || item.quantity || 1)
   })
 })
+
+// ⭐ Jinke items mein naam save nahi tha (purane orders), unke liye
+// Product collection se seedha title nikaal lo — taaki kabhi ID na dikhe
+const idsNeedingLookup = Object.keys(productSalesMap)
+  .filter(pid => !productSalesMap[pid].name && mongoose.Types.ObjectId.isValid(pid))
+if (idsNeedingLookup.length) {
+  const lookedUp = await Product.find({ _id: { $in: idsNeedingLookup } }).select("title")
+  lookedUp.forEach(p => {
+    if (productSalesMap[String(p._id)]) productSalesMap[String(p._id)].name = p.title
+  })
+}
+// Ab bhi kuch bache (product delete ho chuka ho) to hi ek generic label do
+Object.values(productSalesMap).forEach(p => { if (!p.name) p.name = "Deleted Product" })
+
 const topProduct = Object.values(productSalesMap).sort((a, b) => b.total - a.total)[0] || null
 
 res.json({

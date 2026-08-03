@@ -1,4 +1,32 @@
 import Notification from "../models/Notification.js"
+import User from "../models/User.js"
+import { getFirebaseAdmin } from "./firebaseAdmin.js"
+
+/* ─────────────────────────────────────────────────────────
+   sendPush — FCM ke through phone pe asli push notification
+   bhejo (app band ho tab bhi kaam karta hai)
+───────────────────────────────────────────────────────── */
+async function sendPush(userId, title, body) {
+  try {
+    const fb = getFirebaseAdmin()
+    if (!fb) return   // Firebase configure nahi hai — chup-chaap skip
+
+    const user = await User.findById(userId).select("fcmToken")
+    if (!user?.fcmToken) return
+
+    await fb.messaging().send({
+      token: user.fcmToken,
+      notification: { title: title || "EDUCA Store", body },
+      android: {
+        priority: "high",
+        notification: { sound: "notification_bird", channelId: "educa_store_alerts" },
+      },
+    })
+  } catch (err) {
+    // Token expire/invalid ho sakta hai (app uninstall, etc.) — bas log karo
+    console.error("❌ Push send error:", err.message)
+  }
+}
 
 /* ─────────────────────────────────────────────────────────
    createNotif — ek notification banao
@@ -19,6 +47,9 @@ export async function createNotif(userId, type, message, opts = {}) {
       targetPage: opts.targetPage || "",
       read:       false,
     })
+
+    // 📱 Har notification ke saath asli phone push bhi bhejo
+    sendPush(userId, opts.senderName || "EDUCA Store", message)
   } catch (err) {
     console.error("❌ Notification create error:", err.message)
   }

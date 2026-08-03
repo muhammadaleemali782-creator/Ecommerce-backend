@@ -82,6 +82,13 @@ const userSchema = new mongoose.Schema(
       select: false
     },
 
+    /* ⭐ FCM push notification token — Android app har login pe update
+       karta hai, isi se backend push notification bhejta hai */
+    fcmToken: {
+      type: String,
+      default: null
+    },
+
     /* ================= ROLE & HIERARCHY ================= */
     role: {
       type: String,

@@ -11,6 +11,26 @@ console.log("✅ users.routes.js loaded")
 
 /*
 =====================================================
+SAVE FCM TOKEN — Android app login/token-refresh pe call karta hai
+=====================================================
+*/
+router.post("/fcm-token", auth, async (req, res) => {
+  try {
+    const { token } = req.body
+    if (!token) {
+      return res.status(400).json({ success: false, message: "Token required" })
+    }
+    await User.findByIdAndUpdate(req.user.id, { fcmToken: token })
+    res.json({ success: true })
+  } catch (err) {
+    console.error("❌ Save FCM token error:", err.message)
+    res.status(500).json({ success: false, message: "Server error" })
+  }
+})
+
+
+/*
+=====================================================
 CREATE SELLER
 =====================================================
 */
