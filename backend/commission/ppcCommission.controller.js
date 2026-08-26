@@ -3,6 +3,7 @@ import Commission from "./commission.model.js"
 import User from "../models/User.js"
 import Product from "../models/Product.js"
 import PPCSettings from "../models/PPCSettings.js"
+import { RoyaltyPool } from "../models/RoyaltyPool.js"
 import { notifyLevelUp } from "../utils/notifHelper.js"
 
 /*
@@ -175,6 +176,30 @@ export const createPPCCommissionFromOrder = async (order) => {
       }
     }
     if (totalPPC === 0) totalPPC = 1   // fallback
+
+    // ── Accumulate Company-Wide Royalty Pool (for Lifetime Distributor Royalty) ──
+    try {
+      const pool = await RoyaltyPool.getPool()
+      if (pool && pool.isActive) {
+        if (!pool.currentCycle) {
+          pool.currentCycle = {
+            startDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1),
+            totalCompanyPPC: 0,
+            totalCompanySalesRupees: 0,
+            accumulatedPoolPPC: 0,
+            accumulatedPoolRupees: 0
+          }
+        }
+        pool.currentCycle.totalCompanyPPC += totalPPC
+        pool.currentCycle.totalCompanySalesRupees += (order.total || 0)
+        pool.currentCycle.accumulatedPoolPPC = (pool.currentCycle.totalCompanyPPC * pool.poolPercentage) / 100
+        pool.currentCycle.accumulatedPoolRupees = pool.currentCycle.accumulatedPoolPPC * ppcRate
+        await pool.save()
+        console.log(`👑 Accumulated ${totalPPC} PPC to Company Royalty Pool (Current Pool: ${pool.currentCycle.accumulatedPoolPPC} PPC)`)
+      }
+    } catch (poolErr) {
+      console.error("Royalty pool accumulation error:", poolErr.message)
+    }
 
     // ── Detect who placed the order ──
     // ✅ FIX: Agar order.userId exist karta hai → USER ne place kiya
@@ -672,14 +697,46 @@ export const getMyPPCWallet = async (req, res) => {
           note:           "Neeche wale seller ki sales se mila (25% share)"
         },
       }
+      const totalSellerPPC = (user.userWalletAsSeller || 0) + (user.sellerWalletAsSeller || 0)
+      const thresholds = settings.sellerLevelUpThresholds || { level1:50, level2:200, level3:500, level4:2000 }
+      const levelNames = settings.sellerLevelNames || { level0:"Direct Seller", level1:"Silver Seller", level2:"Gold Seller", level3:"Platinum Seller", level4:"Diamond Seller" }
+      const levelRewards = settings.sellerLevelRewards || { level1:"🎁 ₹250 bonus credit", level2:"🎁 ₹750 bonus credit", level3:"🎁 ₹1500 + free kit", level4:"🎁 ₹5000 + trip" }
+
+      let currentLevel = 0
+      if (totalSellerPPC >= (thresholds.level4 || 2000))      currentLevel = 4
+      else if (totalSellerPPC >= (thresholds.level3 || 500))  currentLevel = 3
+      else if (totalSellerPPC >= (thresholds.level2 || 200))  currentLevel = 2
+      else if (totalSellerPPC >= (thresholds.level1 || 50))   currentLevel = 1
+
+      const nextLevel     = currentLevel < 4 ? currentLevel + 1 : null
+      const nextThreshold = nextLevel ? (thresholds[`level${nextLevel}`] || 0) : null
+      const prevThreshold = currentLevel > 0 ? (thresholds[`level${currentLevel}`] || 0) : 0
+      const progress      = nextThreshold
+        ? Math.min(100, Math.round(((totalSellerPPC - prevThreshold) / (nextThreshold - prevThreshold)) * 100))
+        : 100
+
+      response.totalSellerPPC = totalSellerPPC
+      response.unifiedSellerReward = {
+        totalPPC: totalSellerPPC,
+        currentLevel,
+        currentLevelName: levelNames[`level${currentLevel}`] || "Direct Seller",
+        nextLevelName: nextLevel ? (levelNames[`level${nextLevel}`] || "") : null,
+        nextThreshold,
+        prevThreshold,
+        progress,
+        thresholds,
+        levelNames,
+        levelRewards
+      }
+
       // ✅ Seller's OWN Direct Seller Wallet level data (admin PPC settings)
-      response.sellerLevelUpThresholds = settings.sellerLevelUpThresholds || { level1:50, level2:200, level3:500, level4:2000 }
-      response.sellerLevelNames        = settings.sellerLevelNames        || { level0:"Seller", level1:"Silver Seller", level2:"Gold Seller", level3:"Platinum Seller", level4:"Diamond Seller" }
-      response.sellerLevelRewards      = settings.sellerLevelRewards      || { level1:"🎁 ₹250 bonus credit", level2:"🎁 ₹750 bonus credit", level3:"🎁 ₹1500 + free kit", level4:"🎁 ₹5000 + trip" }
-      // ✅ User Wallet level data — completely separate settings (admin PPC settings)
-      response.userWalletLevelUpThresholds = settings.userWalletLevelUpThresholds || { level1:50, level2:200, level3:500, level4:2000 }
-      response.userWalletLevelNames        = settings.userWalletLevelNames        || { level0:"User", level1:"Silver User", level2:"Gold User", level3:"Platinum User", level4:"Diamond User" }
-      response.userWalletLevelRewards      = settings.userWalletLevelRewards      || { level1:"🎁 ₹250 bonus credit", level2:"🎁 ₹750 bonus credit", level3:"🎁 ₹1500 + free kit", level4:"🎁 ₹5000 + trip" }
+      response.sellerLevelUpThresholds = thresholds
+      response.sellerLevelNames        = levelNames
+      response.sellerLevelRewards      = levelRewards
+      // Backward compatibility
+      response.userWalletLevelUpThresholds = thresholds
+      response.userWalletLevelNames        = levelNames
+      response.userWalletLevelRewards      = levelRewards
     }
 
     res.json(response)

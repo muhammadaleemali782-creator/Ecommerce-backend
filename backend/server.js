@@ -92,9 +92,14 @@ app.get("/health", (req, res) => res.json({ status: "ok" }))
 app.use("/orders", orderRoutes)
 
 // ⭐ NEW PPC SYSTEM ROUTES
+import royaltyRoutes from "./routes/royalty.routes.js"
+import teamActivityRoutes from "./routes/teamActivity.routes.js"
+
 app.use("/api/withdrawal", withdrawalRoutes)
 app.use("/api/rewards", rewardClaimRoutes)
 app.use("/api/ppc-settings", ppcSettingsRoutes)
+app.use("/api/royalty", royaltyRoutes)
+app.use("/api/team", teamActivityRoutes)
 app.get("/api/ppc/wallet/me", protect, getMyPPCWallet)
 
 // 🔔 NOTIFICATION ROUTES

@@ -2,6 +2,9 @@ import express from "express"
 import auth from "../middleware/auth.js"
 import allowRoles from "../middleware/allowRoles.js"
 import PPCSettings from "../models/PPCSettings.js"
+import Commission from "../commission/commission.model.js"
+import User from "../models/User.js"
+import Order from "../models/Order.js"
 
 const router = express.Router()
 
@@ -196,6 +199,157 @@ router.post("/update", auth, allowRoles("admin"), async (req, res) => {
   } catch (err) {
     console.error("Update settings error:", err)
     res.status(500).json({ message: "Failed to update settings" })
+  }
+})
+
+/* ── GET /api/ppc-settings/ledger — Full statement history for logged-in user ── */
+router.get("/ledger", auth, allowRoles("distributor", "seller", "admin"), async (req, res) => {
+  try {
+    const targetUserId = req.user.id
+    const userDoc = await User.findById(targetUserId).select("name fullName role distributorWallet sellerWallet userWalletAsSeller sellerWalletAsSeller totalPPCEarned")
+
+    const query = { toUser: targetUserId, status: { $ne: "rejected" } }
+    
+    // Date filter
+    const { startDate, endDate, walletType, search } = req.query
+    if (startDate || endDate) {
+      query.createdAt = {}
+      if (startDate) query.createdAt.$gte = new Date(startDate)
+      if (endDate) {
+        const e = new Date(endDate)
+        e.setHours(23, 59, 59, 999)
+        query.createdAt.$lte = e
+      }
+    }
+    if (walletType && walletType !== "all") {
+      query.walletType = walletType
+    }
+
+    const records = await Commission.find(query)
+      .populate("fromUser", "name fullName role phone email")
+      .populate("toUser", "name fullName role")
+      .populate("orderId", "total status createdAt")
+      .sort({ createdAt: -1 })
+      .limit(200)
+
+    res.json({
+      success: true,
+      user: {
+        _id: userDoc._id,
+        name: userDoc.name,
+        fullName: userDoc.fullName || userDoc.name,
+        role: userDoc.role,
+        distributorWallet: userDoc.distributorWallet || 0,
+        sellerWallet: userDoc.sellerWallet || 0,
+        userWalletAsSeller: userDoc.userWalletAsSeller || 0,
+        sellerWalletAsSeller: userDoc.sellerWalletAsSeller || 0,
+        totalPPCEarned: userDoc.totalPPCEarned || 0
+      },
+      totalCount: records.length,
+      ledger: records.map(r => ({
+        _id: r._id,
+        date: r.createdAt,
+        ppcCount: r.ppcCount || 0,
+        ppcBaseRate: r.ppcBaseRate || 40,
+        percentageShare: r.percentageShare || 50,
+        rupeeValue: r.rupeeValue || 0,
+        positionType: r.positionType || "direct",
+        walletType: r.walletType,
+        isUserOrder: r.isUserOrder || false,
+        fromUser: r.fromUser ? {
+          _id: r.fromUser._id,
+          name: r.fromUser.name,
+          fullName: r.fromUser.fullName || r.fromUser.name,
+          role: r.fromUser.role,
+          phone: r.fromUser.phone
+        } : null,
+        order: r.orderId ? {
+          _id: r.orderId._id,
+          total: r.orderId.total,
+          status: r.orderId.status
+        } : null,
+        chainInfo: r.chainInfo || {}
+      }))
+    })
+  } catch (err) {
+    console.error("Ledger error:", err)
+    res.status(500).json({ success: false, message: "Failed to load PPC ledger" })
+  }
+})
+
+/* ── GET /api/ppc-settings/ledger/:userId — Admin inspects any user's PPC ledger ── */
+router.get("/ledger/:userId", auth, allowRoles("admin"), async (req, res) => {
+  try {
+    const targetUserId = req.params.userId
+    const userDoc = await User.findById(targetUserId).select("name fullName role distributorWallet sellerWallet userWalletAsSeller sellerWalletAsSeller totalPPCEarned")
+    if (!userDoc) {
+      return res.status(404).json({ success: false, message: "User not found" })
+    }
+
+    const query = { toUser: targetUserId, status: { $ne: "rejected" } }
+    const { startDate, endDate, walletType } = req.query
+    if (startDate || endDate) {
+      query.createdAt = {}
+      if (startDate) query.createdAt.$gte = new Date(startDate)
+      if (endDate) {
+        const e = new Date(endDate)
+        e.setHours(23, 59, 59, 999)
+        query.createdAt.$lte = e
+      }
+    }
+    if (walletType && walletType !== "all") {
+      query.walletType = walletType
+    }
+
+    const records = await Commission.find(query)
+      .populate("fromUser", "name fullName role phone email")
+      .populate("toUser", "name fullName role")
+      .populate("orderId", "total status createdAt")
+      .sort({ createdAt: -1 })
+      .limit(200)
+
+    res.json({
+      success: true,
+      user: {
+        _id: userDoc._id,
+        name: userDoc.name,
+        fullName: userDoc.fullName || userDoc.name,
+        role: userDoc.role,
+        distributorWallet: userDoc.distributorWallet || 0,
+        sellerWallet: userDoc.sellerWallet || 0,
+        userWalletAsSeller: userDoc.userWalletAsSeller || 0,
+        sellerWalletAsSeller: userDoc.sellerWalletAsSeller || 0,
+        totalPPCEarned: userDoc.totalPPCEarned || 0
+      },
+      totalCount: records.length,
+      ledger: records.map(r => ({
+        _id: r._id,
+        date: r.createdAt,
+        ppcCount: r.ppcCount || 0,
+        ppcBaseRate: r.ppcBaseRate || 40,
+        percentageShare: r.percentageShare || 50,
+        rupeeValue: r.rupeeValue || 0,
+        positionType: r.positionType || "direct",
+        walletType: r.walletType,
+        isUserOrder: r.isUserOrder || false,
+        fromUser: r.fromUser ? {
+          _id: r.fromUser._id,
+          name: r.fromUser.name,
+          fullName: r.fromUser.fullName || r.fromUser.name,
+          role: r.fromUser.role,
+          phone: r.fromUser.phone
+        } : null,
+        order: r.orderId ? {
+          _id: r.orderId._id,
+          total: r.orderId.total,
+          status: r.orderId.status
+        } : null,
+        chainInfo: r.chainInfo || {}
+      }))
+    })
+  } catch (err) {
+    console.error("Admin user ledger error:", err)
+    res.status(500).json({ success: false, message: "Failed to load user PPC ledger" })
   }
 })
 

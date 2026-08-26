@@ -82,7 +82,9 @@ router.get("/my", protect, allowRoles("seller", "distributor"), async (req, res)
       const thresholds = settings[cfg.thresholdsKey] || cfg.defaultThresholds
       const names = settings[cfg.namesKey] || cfg.defaultNames
       const rewards = settings[cfg.rewardsKey] || cfg.defaultRewards
-      const currentPPC = user[cfg.ppcField] || 0
+      const currentPPC = user.role === "seller"
+        ? (user.userWalletAsSeller || 0) + (user.sellerWalletAsSeller || 0)
+        : (user[cfg.ppcField] || 0)
 
       const levels = [1, 2, 3, 4].map((level) => {
         const threshold = thresholds[`level${level}`] || 0
@@ -141,7 +143,9 @@ router.post("/claim", protect, allowRoles("seller", "distributor"), async (req, 
     const rewards = settings[cfg.rewardsKey] || cfg.defaultRewards
 
     const threshold = thresholds[`level${lvl}`] || 0
-    const currentPPC = user[cfg.ppcField] || 0
+    const currentPPC = user.role === "seller"
+      ? (user.userWalletAsSeller || 0) + (user.sellerWalletAsSeller || 0)
+      : (user[cfg.ppcField] || 0)
 
     if (currentPPC < threshold) {
       return res.status(400).json({
