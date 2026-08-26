@@ -59,6 +59,14 @@ const saveCommission = async ({
   isUserOrder = false,
   chainInfo = {},
 }) => {
+  // ⭐ STRICT RULE: Admin and normal User NEVER receive PPC commissions
+  if (!toUser) return
+  const recipient = await User.findById(toUser).select("role isDeleted name")
+  if (!recipient || recipient.role === "admin" || recipient.role === "user" || recipient.isDeleted) {
+    console.log(`🚫 PPC Commission Skipped: ${recipient?.name || toUser} has role "${recipient?.role}" (Admin/User not eligible for PPC)`)
+    return
+  }
+
   await Commission.create({
     fromUser, toUser, orderId,
     ppcCount, ppcBaseRate,
@@ -255,7 +263,7 @@ export const createPPCCommissionFromOrder = async (order) => {
       const directSellerPct = Number(userSplit.directSeller ?? 50)
       const distributorPct  = Number(userSplit.distributor ?? 50)
 
-      if (directSeller) {
+      if (directSeller && directSeller.role === "seller") {
         const sellerRupees = totalPPC * ppcRate * (directSellerPct / 100)
         await saveCommission({
           fromUser:        order.userId || order.sellerId,
@@ -278,7 +286,7 @@ export const createPPCCommissionFromOrder = async (order) => {
         await checkAndNotifyLevelUp(directSeller._id, "userWallet", oldSellerPPC, directSeller.userWalletAsSeller)
       }
 
-      if (distributor) {
+      if (distributor && distributor.role === "distributor") {
         const distRupees = totalPPC * ppcRate * (distributorPct / 100)
         await saveCommission({
           fromUser:        order.userId || order.sellerId,
@@ -351,37 +359,39 @@ export const createPPCCommissionFromOrder = async (order) => {
     // ══════════════════════════════════════════════════════
     //  STEP 1: Direct Seller → 50% always
     // ══════════════════════════════════════════════════════
-    const directSellerRupees = totalPPC * ppcRate * 0.50
+    if (directSeller && directSeller.role === "seller") {
+      const directSellerRupees = totalPPC * ppcRate * 0.50
 
-    await saveCommission({
-      fromUser:        order.sellerId,
-      toUser:          directSeller._id,
-      orderId:         order._id,
-      ppcCount:        totalPPC,
-      ppcBaseRate:     ppcRate,
-      positionType:    "direct",
-      percentageShare: 50,
-      rupeeValue:      directSellerRupees,
-      walletType:      "userWallet",
-      level:           1,
-      isUserOrder:     false,
-      chainInfo:       sellerChain,
-    })
+      await saveCommission({
+        fromUser:        order.sellerId,
+        toUser:          directSeller._id,
+        orderId:         order._id,
+        ppcCount:        totalPPC,
+        ppcBaseRate:     ppcRate,
+        positionType:    "direct",
+        percentageShare: 50,
+        rupeeValue:      directSellerRupees,
+        walletType:      "userWallet",
+        level:           1,
+        isUserOrder:     false,
+        chainInfo:       sellerChain,
+      })
 
-    const oldDirectSellerPPC = directSeller.userWalletAsSeller || 0
-    directSeller.userWalletAsSeller = oldDirectSellerPPC + totalPPC
-    directSeller.totalPPCEarned     = (directSeller.totalPPCEarned || 0) + totalPPC
-    await directSeller.save()
-    await checkAndNotifyLevelUp(directSeller._id, "userWallet", oldDirectSellerPPC, directSeller.userWalletAsSeller)
+      const oldDirectSellerPPC = directSeller.userWalletAsSeller || 0
+      directSeller.userWalletAsSeller = oldDirectSellerPPC + totalPPC
+      directSeller.totalPPCEarned     = (directSeller.totalPPCEarned || 0) + totalPPC
+      await directSeller.save()
+      await checkAndNotifyLevelUp(directSeller._id, "userWallet", oldDirectSellerPPC, directSeller.userWalletAsSeller)
 
-    console.log(`✅ Direct Seller ${directSeller.name} → ${totalPPC} PPC (₹${directSellerRupees}) [50%] → userWallet`)
+      console.log(`✅ Direct Seller ${directSeller.name} → ${totalPPC} PPC (₹${directSellerRupees}) [50%] → userWallet`)
+    }
 
     // ══════════════════════════════════════════════════════
     //  STEP 2: Parent Seller (agar hai) → 25%
     // ══════════════════════════════════════════════════════
     let remainingForDist = 50   // distributor ka default share
 
-    if (parentSeller) {
+    if (parentSeller && parentSeller.role === "seller") {
       const parentSellerRupees = totalPPC * ppcRate * 0.25   // 25%
 
       await saveCommission({
@@ -419,7 +429,7 @@ export const createPPCCommissionFromOrder = async (order) => {
     // ══════════════════════════════════════════════════════
     //  STEP 3: Distributor → mandatory (25% or 50%)
     // ══════════════════════════════════════════════════════
-    if (distributor) {
+    if (distributor && distributor.role === "distributor") {
       const distRupees = totalPPC * ppcRate * (remainingForDist / 100)
 
       await saveCommission({
