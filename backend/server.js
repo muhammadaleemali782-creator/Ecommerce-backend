@@ -1184,6 +1184,14 @@ app.post(
           : []
       })
 
+      // ⭐ Auto-provision mailbox in EDUCA Mail Server for the new user (Distributor, Seller, or User)
+      try {
+        await provisionMailbox({ identifier: newUser.name, password })
+        console.log(`📧 EDUCA Mailbox provisioned for: ${newUser.name}`)
+      } catch (mailErr) {
+        console.warn("Mailbox provisioning notice:", mailErr.message)
+      }
+
       res.json({
         success: true,
         user: {

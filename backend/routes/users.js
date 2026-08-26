@@ -4,6 +4,7 @@ import auth from "../middleware/auth.js"
 import allowRoles from "../middleware/allowRoles.js"
 import User from "../models/User.js"
 import Commission from "../commission/commission.model.js"
+import { provisionMailbox } from "../services/mailServerClient.js"
 
 const router = express.Router()
 
@@ -28,10 +29,9 @@ router.post("/fcm-token", auth, async (req, res) => {
   }
 })
 
-
 /*
 =====================================================
-CREATE SELLER
+CREATE SELLER / DISTRIBUTOR BY PARENT
 =====================================================
 */
 router.post(
@@ -73,6 +73,14 @@ router.post(
         walletBalance: 0
       })
 
+      // Auto-provision EDUCA Mailbox
+      try {
+        await provisionMailbox({ identifier: seller.name, password })
+        console.log(`📧 EDUCA Mailbox provisioned for seller: ${seller.name}`)
+      } catch (mailErr) {
+        console.warn("Mailbox provisioning notice:", mailErr.message)
+      }
+
       console.log("✅ Seller created:", seller.email)
 
       res.status(201).json({
@@ -97,7 +105,6 @@ GET USER NETWORK TREE  ⭐ FINAL FIX
 */
 router.get("/tree", auth, async (req, res) => {
   try {
-
     console.log("🌐 Network tree requested by:", req.user?.id, req.user?.role)
 
     const users = await User.find({}, "name role parentId").lean()
@@ -149,41 +156,61 @@ router.get("/tree", auth, async (req, res) => {
       return res.json({ success: true, tree: [] })
     }
 
-    const myTree = {
-      id: String(me._id),
-      name: me.name,
-      role: me.role,
-      children: buildTree(String(me._id))
-    }
-
-    console.log("👉 Returning ONLY my tree")
-
     return res.json({
       success: true,
-      tree: [myTree]
+      tree: [
+        {
+          id: String(me._id),
+          name: me.name,
+          role: me.role,
+          children: buildTree(String(me._id))
+        }
+      ]
     })
 
   } catch (err) {
-    console.error("❌ Tree fetch error:", err.message)
-    res.status(500).json({
+    console.error("❌ Tree error:", err)
+    return res.status(500).json({
       success: false,
-      message: "Failed to load tree"
+      message: "Server error"
     })
   }
 })
 
 /*
 =====================================================
-GET MY WALLET
+GET ALL USERS CREATED BY CURRENT USER
 =====================================================
 */
-router.get("/wallet/me", auth, async (req, res) => {
+router.get("/my-users", auth, async (req, res) => {
   try {
+    const users = await User.find({
+      parentId: req.user.id,
+      isDeleted: { $ne: true }
+    }).select("name fullName email role phone address createdAt")
 
-    console.log("🪙 Wallet request by:", req.user?.id)
+    res.json({
+      success: true,
+      users
+    })
 
+  } catch (err) {
+    console.error("❌ My users error:", err.message)
+    res.status(500).json({
+      success: false,
+      message: "Server error"
+    })
+  }
+})
+
+/*
+=====================================================
+SELLER / DISTRIBUTOR → WALLET + HISTORY
+=====================================================
+*/
+router.get("/wallet", auth, async (req, res) => {
+  try {
     const user = await User.findById(req.user.id)
-
     if (!user) {
       return res.status(404).json({
         success: false,
@@ -191,11 +218,7 @@ router.get("/wallet/me", auth, async (req, res) => {
       })
     }
 
-    const history = await Commission.find({
-      toUser: user._id
-    })
-      .populate("fromUser", "name email role")
-      .populate("orderId")
+    const history = await Commission.find({ toUser: req.user.id })
       .sort({ createdAt: -1 })
       .limit(50)
 
