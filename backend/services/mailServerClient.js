@@ -32,20 +32,20 @@ export const provisionMailbox = async ({ identifier, password }) => {
   }
 }
 
-/* ── Send update notification email via EDUCA Mail ── */
-export const sendEducaMail = async ({ to, subject, html, text }) => {
+/* ── Send transactional / OTP email into user's EDUCA Mailbox ── */
+export const sendEducaMail = async ({ to, subject, body }) => {
   try {
-    const res = await fetch(`${MAIL_SERVER_URL}/mail/send-direct`, {
+    const cleanTo = to.replace(/[^a-zA-Z0-9_@-]/g, "").toLowerCase().split("@")[0]
+    const res = await fetch(`${MAIL_SERVER_URL}/provision/message`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "X-API-Key": MAIL_API_KEY
       },
       body: JSON.stringify({
-        to,
-        subject: subject || "EDUCA VEDA Update",
-        html: html || `<p>${text}</p>`,
-        text: text || subject
+        to: cleanTo,
+        subject: subject || "EDUCA VEDA Security Notification",
+        body: body || "You have a new update from EDUCA VEDA."
       })
     })
     return { success: res.ok }

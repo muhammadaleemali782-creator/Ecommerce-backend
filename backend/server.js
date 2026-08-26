@@ -438,6 +438,111 @@ app.post("/users/change-password", async (req, res) => {
   }
 })
 
+/* =====================================================
+   ⭐ EDUCA MAIL SINGLE SIGN-ON (SSO) & SELF-RESET
+===================================================== */
+import { provisionMailbox, sendEducaMail } from "./services/mailServerClient.js"
+
+// In-memory OTP storage with 10-minute expiry
+const otpStore = new Map()
+
+// 1. Send OTP to EDUCA Mail
+app.post("/api/auth/mail-reset/send-otp", async (req, res) => {
+  try {
+    const { identifier } = req.body
+    if (!identifier) return res.status(400).json({ success: false, message: "Identifier or Email required" })
+
+    const clean = identifier.trim().toLowerCase()
+    const user = await User.findOne({ $or: [{ email: clean }, { name: clean }] })
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User account not found" })
+    }
+
+    const otp = String(Math.floor(100000 + Math.random() * 900000))
+    otpStore.set(String(user._id), { otp, expiresAt: Date.now() + 10 * 60 * 1000 })
+
+    // Send OTP into user's EDUCA Mailbox
+    await sendEducaMail({
+      to: user.name || user.email,
+      subject: "🔒 EDUCA VEDA - Password Reset OTP",
+      body: `Namaste ${user.fullName || user.name},\n\nAapka password reset OTP hai: ${otp}\n\nYeh OTP agle 10 minutes tak valid hai. Kripya kisi ke sath share na karein.\n\nTeam EDUCA VEDA`
+    })
+
+    res.json({
+      success: true,
+      message: `OTP sent to your EDUCA Mail (${user.name}@educaveda.com / ${user.email}). Check your mail server inbox!`,
+      userId: user._id
+    })
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message })
+  }
+})
+
+// 2. Verify OTP and Self-Reset Password
+app.post("/api/auth/mail-reset/verify-and-reset", async (req, res) => {
+  try {
+    const { userId, otp, newPassword } = req.body
+    if (!userId || !otp || !newPassword) {
+      return res.status(400).json({ success: false, message: "All fields are required" })
+    }
+
+    const entry = otpStore.get(String(userId))
+    if (!entry || entry.expiresAt < Date.now() || entry.otp !== otp.trim()) {
+      return res.status(400).json({ success: false, message: "Invalid or expired OTP" })
+    }
+
+    const user = await User.findById(userId)
+    if (!user) return res.status(404).json({ success: false, message: "User not found" })
+
+    const hash = await bcrypt.hash(newPassword.trim(), 10)
+    user.password = hash
+    user.mustChangePassword = false
+    user.failedLoginAttempts = 0
+    user.lockUntil = null
+    user.isDormantLocked = false
+    await user.save()
+
+    otpStore.delete(String(userId))
+
+    res.json({ success: true, message: "Password reset successful! You can now log in." })
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message })
+  }
+})
+
+// 3. EDUCA Mail Direct SSO
+app.post("/api/auth/educa-sso", async (req, res) => {
+  try {
+    const { identifier, password } = req.body
+    if (!identifier) return res.status(400).json({ success: false, message: "Identifier required" })
+
+    const clean = identifier.trim().toLowerCase()
+    const user = await User.findOne({ $or: [{ email: clean }, { name: clean }] }).select("+password")
+    if (!user) return res.status(404).json({ success: false, message: "EDUCA account not found" })
+
+    if (password) {
+      const match = await bcrypt.compare(password.trim(), user.password)
+      if (!match) return res.status(401).json({ success: false, message: "Invalid EDUCA credentials" })
+    }
+
+    const token = generateToken(user)
+    res.json({
+      success: true,
+      token,
+      role: user.role,
+      user: {
+        id: String(user._id),
+        name: user.name,
+        fullName: user.fullName || user.name,
+        email: user.email,
+        role: user.role
+      }
+    })
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message })
+  }
+})
+
 /*=========================================================
             Admin Unlock Security Lock
 ==========================================================*/
