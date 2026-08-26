@@ -310,8 +310,8 @@ router.put("/reject/:id", protect, async (req, res) => {
 router.get("/distributor", protect, allowRoles("distributor"), async (req, res) => {
   try {
     const orders = await Order.find({ distributorId: req.user.id })
-      .populate("sellerId", "name email role")
-      .populate("userId",   "name email role")
+      .populate("sellerId", "name fullName email role phone")
+      .populate("userId",   "name fullName email role phone")
       .sort({ createdAt: -1 })
     res.json(orders)
   } catch (err) { res.status(500).json({ msg: err.message }) }
@@ -332,9 +332,9 @@ router.get("/mine", protect, allowRoles("seller", "user"), async (req, res) => {
         { userId:       uid },
       ]
     })
-      .populate("sellerId",      "name email role")
-      .populate("userId",        "name email role")
-      .populate("distributorId", "name")
+      .populate("sellerId",      "name fullName email role phone")
+      .populate("userId",        "name fullName email role phone")
+      .populate("distributorId", "name fullName email role phone")
       .sort({ createdAt: -1 })
 
     // ⭐ Note visibility filter — agar noteVisible false hai to hide karo
@@ -362,9 +362,9 @@ router.get("/admin", protect, allowRoles("admin"), async (req, res) => {
     const { status } = req.query
     const query = status && status !== "all" ? { status } : {}
     const orders = await Order.find(query)
-      .populate("sellerId",      "name email role")
-      .populate("userId",        "name email role")
-      .populate("distributorId", "name email")
+      .populate("sellerId",      "name fullName email role phone")
+      .populate("userId",        "name fullName email role phone")
+      .populate("distributorId", "name fullName email role phone")
       .sort({ createdAt: -1 })
       .limit(500)
     res.json(orders)
