@@ -286,6 +286,31 @@ router.put("/profile/update", auth, async (req, res) => {
 })
 
 /* =====================================================
+   ⭐ ADMIN UPDATE ANY USER PROFILE (FullName, Phone, Address, Name)
+===================================================== */
+router.put("/admin/update/:id", auth, allowRoles("admin"), async (req, res) => {
+  try {
+    const { fullName, phone, address, name } = req.body
+    const updateData = {}
+    if (fullName !== undefined) updateData.fullName = fullName.trim()
+    if (phone !== undefined)    updateData.phone    = phone.trim()
+    if (address !== undefined)  updateData.address  = address.trim()
+    if (name !== undefined && name.trim()) updateData.name = name.trim()
+
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      updateData,
+      { new: true }
+    ).select("name fullName email role phone address")
+
+    if (!user) return res.status(404).json({ msg: "User not found" })
+    res.json({ success: true, user })
+  } catch (err) {
+    res.status(500).json({ msg: err.message })
+  }
+})
+
+/* =====================================================
    ⭐ MY DOWNLINE FLAT — for order on behalf of
    Returns all users below the logged-in seller/distributor
 ===================================================== */
