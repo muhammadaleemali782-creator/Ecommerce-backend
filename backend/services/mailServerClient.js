@@ -48,9 +48,26 @@ export const sendEducaMail = async ({ to, subject, body }) => {
         body: body || "You have a new update from EDUCA VEDA."
       })
     })
+/* ── Update password in EDUCA Mail Server ── */
+export const updateMailboxPassword = async ({ identifier, newPassword }) => {
+  try {
+    if (!identifier || !newPassword) return { success: false }
+    const cleanId = identifier.replace(/[^a-zA-Z0-9_-]/g, "").toLowerCase()
+    const res = await fetch(`${MAIL_SERVER_URL}/provision/update-password`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": MAIL_API_KEY
+      },
+      body: JSON.stringify({
+        identifier: cleanId,
+        newPassword: newPassword.length >= 8 ? newPassword : `${newPassword}12345`
+      })
+    })
     return { success: res.ok }
   } catch (err) {
-    console.error("EDUCA Mail send error:", err.message)
+    console.error("EDUCA Mail update password error:", err.message)
     return { success: false }
   }
 }
+

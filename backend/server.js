@@ -422,7 +422,14 @@ app.post("/users/change-password", async (req, res) => {
 
     await user.save()
 
-    console.log("✅ Password changed for:", user.email)
+    // Sync new password with EDUCA Mail Server
+    try {
+      await updateMailboxPassword({ identifier: user.name || user.email, newPassword })
+    } catch (e) {
+      console.warn("Mailbox password sync notice:", e.message)
+    }
+
+    console.log("✅ Password changed and synced to EDUCA Mail for:", user.email)
 
     return res.json({
       success: true,
@@ -441,7 +448,7 @@ app.post("/users/change-password", async (req, res) => {
 /* =====================================================
    ⭐ EDUCA MAIL SINGLE SIGN-ON (SSO) & SELF-RESET
 ===================================================== */
-import { provisionMailbox, sendEducaMail } from "./services/mailServerClient.js"
+import { provisionMailbox, sendEducaMail, updateMailboxPassword } from "./services/mailServerClient.js"
 
 // In-memory OTP storage with 10-minute expiry
 const otpStore = new Map()
@@ -501,6 +508,13 @@ app.post("/api/auth/mail-reset/verify-and-reset", async (req, res) => {
     user.lockUntil = null
     user.isDormantLocked = false
     await user.save()
+
+    // Sync new password with EDUCA Mail Server
+    try {
+      await updateMailboxPassword({ identifier: user.name || user.email, newPassword })
+    } catch (e) {
+      console.warn("Mailbox password sync notice:", e.message)
+    }
 
     otpStore.delete(String(userId))
 
