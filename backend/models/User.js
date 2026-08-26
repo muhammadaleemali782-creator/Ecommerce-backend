@@ -252,12 +252,42 @@ const userSchema = new mongoose.Schema(
     },
 
     /* =====================================================
-       ⭐ NEW → BLOCK USER SYSTEM
+       ⭐ BLOCK & SECURITY LOCKOUT SYSTEM
     ===================================================== */
     isBlocked: {
       type: Boolean,
       default: false,
       index: true
+    },
+
+    failedLoginAttempts: {
+      type: Number,
+      default: 0
+    },
+
+    lockUntil: {
+      type: Date,
+      default: null
+    },
+
+    lastLoginDate: {
+      type: Date,
+      default: null
+    },
+
+    lastActiveDevice: {
+      type: String,
+      default: ""
+    },
+
+    lastLoginIP: {
+      type: String,
+      default: ""
+    },
+
+    isDormantLocked: {
+      type: Boolean,
+      default: false
     },
 
     blockedAt: {

@@ -237,7 +237,32 @@ app.post("/login", async (req, res) => {
     }
 
     console.log("USER FOUND:", user.email)
-    console.log("PASSWORD FROM DB:", user.password)
+
+    /* ⭐ LOCKOUT TIME CHECK */
+    if (user.lockUntil && new Date(user.lockUntil) > new Date()) {
+      const remainingMs = new Date(user.lockUntil) - new Date()
+      const remainingMins = Math.ceil(remainingMs / (60 * 1000))
+      const remainingHours = Math.ceil(remainingMs / (60 * 60 * 1000))
+      const timeMsg = remainingMins < 60 ? `${remainingMins} minutes` : `${remainingHours} hours`
+      console.log(`🔒 LOGIN BLOCKED: Account locked for ${cleanEmail} (${timeMsg} remaining)`)
+      return res.status(429).json({
+        success: false,
+        message: `Security Lockout Active: Too many failed password attempts. Please try again after ${timeMsg}, or contact Admin.`
+      })
+    }
+
+    /* ⭐ 90-DAY (3-MONTH) DORMANT AUTO-LOCK CHECK */
+    if (user.role !== "admin") {
+      const threeMonthsAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000)
+      const lastActive = user.lastLoginDate || user.createdAt
+      if (lastActive && new Date(lastActive) < threeMonthsAgo) {
+        await User.findByIdAndUpdate(user._id, { isDormantLocked: true })
+        return res.status(403).json({
+          success: false,
+          message: "🔒 Account Inactivity Lock: Aapki ID 3 mahine se inactive hone ke karan security lock ho gayi hai. Unlock karne ke liye Admin ko request bhejein."
+        })
+      }
+    }
 
     /* ⭐ PASSWORD EXIST CHECK */
     if (!user.password || user.password === "") {
@@ -258,14 +283,61 @@ app.post("/login", async (req, res) => {
 
     if (!match) {
       console.log("❌ LOGIN FAIL: Wrong password for", cleanEmail)
+      const userDoc = await User.findById(user._id)
+      const attempts = (userDoc?.failedLoginAttempts || 0) + 1
+      let lockUntil = null
+      let alertMsg = `Invalid credentials. (${attempts} failed attempt${attempts > 1 ? "s" : ""})`
+
+      if (attempts >= 20) {
+        lockUntil = new Date(Date.now() + 10 * 365 * 24 * 60 * 60 * 1000) // 10 years permanent lock
+        alertMsg = "🚨 MAXIMUM ATTEMPTS EXCEEDED (20+): Account locked permanently. Only Admin can unlock."
+      } else if (attempts >= 10) {
+        lockUntil = new Date(Date.now() + 60 * 60 * 1000) // 1 hour
+        alertMsg = "⚠️ 10 failed attempts: Account locked for 1 hour for security protection."
+      } else if (attempts >= 5) {
+        lockUntil = new Date(Date.now() + 5 * 60 * 1000) // 5 minutes
+        alertMsg = "⚠️ 5 failed attempts: Account locked for 5 minutes."
+      }
+
+      if (userDoc) {
+        userDoc.failedLoginAttempts = attempts
+        userDoc.lockUntil = lockUntil
+        await userDoc.save()
+      }
+
       return res.status(401).json({
         success: false,
-        message: "Invalid credentials"
+        message: alertMsg,
+        failedAttempts: attempts
       })
     }
 
     console.log("✅ LOGIN SUCCESS:", user.email)
     console.log("Must Change Password:", user.mustChangePassword)
+
+    // Reset failed counter & record client device info
+    const ua = req.headers["user-agent"] || ""
+    const clientIP = req.headers["x-forwarded-for"] || req.socket?.remoteAddress || ""
+    let deviceInfo = "Unknown Device"
+    if (/android/i.test(ua)) deviceInfo = "Android Phone"
+    else if (/iphone/i.test(ua)) deviceInfo = "Apple iPhone"
+    else if (/ipad/i.test(ua)) deviceInfo = "Apple iPad"
+    else if (/macintosh/i.test(ua)) deviceInfo = "Mac Computer"
+    else if (/windows/i.test(ua)) deviceInfo = "Windows PC"
+    else if (/linux/i.test(ua)) deviceInfo = "Linux System"
+
+    if (/chrome/i.test(ua)) deviceInfo += " (Chrome)"
+    else if (/safari/i.test(ua)) deviceInfo += " (Safari)"
+    else if (/firefox/i.test(ua)) deviceInfo += " (Firefox)"
+    else if (/edge/i.test(ua)) deviceInfo += " (Edge)"
+
+    await User.findByIdAndUpdate(user._id, {
+      failedLoginAttempts: 0,
+      lockUntil: null,
+      lastLoginDate: new Date(),
+      lastActiveDevice: deviceInfo,
+      lastLoginIP: clientIP
+    })
 
     /* ✅ TEMP PASSWORD */
     if (user.mustChangePassword === true) {
@@ -363,6 +435,25 @@ app.post("/users/change-password", async (req, res) => {
       success: false,
       message: err.message
     })
+  }
+})
+
+/*=========================================================
+            Admin Unlock Security Lock
+==========================================================*/
+app.put("/admin/unlock-security/:id", protect, allowRoles("admin"), async (req, res) => {
+  try {
+    const user = await User.findById(req.params.id)
+    if (!user) return res.status(404).json({ success: false, message: "User not found" })
+    user.failedLoginAttempts = 0
+    user.lockUntil = null
+    user.isDormantLocked = false
+    user.isBlocked = false
+    await user.save()
+    console.log(`🔓 Security lock reset for: ${user.email}`)
+    res.json({ success: true, message: "Account security lock cleared" })
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message })
   }
 })
 
