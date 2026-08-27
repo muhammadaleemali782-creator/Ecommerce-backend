@@ -126,6 +126,16 @@ const userSchema = new mongoose.Schema(
     ],
 
     /* ================= TEMP PASSWORD SYSTEM 🔥 ================= */
+    resetOtp: {
+      type: String,
+      default: null
+    },
+
+    resetOtpExpires: {
+      type: Date,
+      default: null
+    },
+
     mustChangePassword: {
       type: Boolean,
       default: false,
