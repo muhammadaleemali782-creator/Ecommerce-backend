@@ -59,49 +59,44 @@ export const provisionMailbox = async ({ identifier, password }) => {
   }
 }
 
-/* ── Send transactional / OTP email into user's EDUCA Mailbox (Instant Dual-Delivery) ── */
+/* ── Send transactional / OTP email into user's EDUCA Mailbox (Instant Single-Delivery) ── */
 export const sendEducaMail = async ({ to, subject, body }) => {
   try {
     const rawTo = (to || "").trim().toLowerCase()
-    const cleanId = rawTo.includes("@") ? rawTo.split("@")[0] : rawTo
-    const domainEmail = rawTo.includes("@") ? rawTo : `${rawTo}@educaveda.com`
     
-    // 1. Instant Direct MongoDB Save (Zero Latency, No Cold Starts)
+    // 1. Instant Direct MongoDB Save (Single Unique Record, Zero Lag)
     if (DirectMessageModel) {
       try {
-        const recipients = Array.from(new Set([rawTo, cleanId, domainEmail]))
-        for (const recipient of recipients) {
-          await DirectMessageModel.create({
-            product: "educa",
-            from: "no-reply@educaveda.com",
-            to: recipient,
-            subject: deflate(subject || "EDUCA VEDA Security Notification"),
-            body: deflate(body || "You have a new update from EDUCA VEDA."),
-            flags: 0
-          })
-        }
-        console.log(`⚡ [sendEducaMail] Instant DB write successful for recipients: ${recipients.join(', ')}`)
-      } catch (dbErr) {
-        console.warn("Direct Mail DB write warning:", dbErr.message)
-      }
-    }
-
-    // 2. Also Notify HTTP Provisioning API
-    try {
-      await fetch(`${MAIL_SERVER_URL}/provision/message`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-API-Key": MAIL_API_KEY
-        },
-        body: JSON.stringify({
+        await DirectMessageModel.create({
+          product: "educa",
+          from: "no-reply@educaveda.com",
           to: rawTo,
-          subject: subject || "EDUCA VEDA Security Notification",
-          body: body || "You have a new update from EDUCA VEDA."
+          subject: deflate(subject || "EDUCA VEDA Security Notification"),
+          body: deflate(body || "You have a new update from EDUCA VEDA."),
+          flags: 0
         })
-      })
-    } catch (httpErr) {
-      // Ignored since direct DB write already secured delivery
+        console.log(`⚡ [sendEducaMail] Instant DB write successful for ${rawTo}`)
+      } catch (dbErr) {
+        console.warn("Direct Mail DB write notice:", dbErr.message)
+      }
+    } else {
+      // 2. HTTP Fallback if DB connection isn't available
+      try {
+        await fetch(`${MAIL_SERVER_URL}/provision/message`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-API-Key": MAIL_API_KEY
+          },
+          body: JSON.stringify({
+            to: rawTo,
+            subject: subject || "EDUCA VEDA Security Notification",
+            body: body || "You have a new update from EDUCA VEDA."
+          })
+        })
+      } catch (httpErr) {
+        console.warn("HTTP mail notice:", httpErr.message)
+      }
     }
 
     return { success: true }
