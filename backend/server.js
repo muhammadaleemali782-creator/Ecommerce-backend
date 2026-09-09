@@ -2558,13 +2558,13 @@ app.get("/check-email", async (req, res) => {
    POST /settings/email-domain  → admin domain set kare
 ===================================================== */
 
-// GET — koi bhi logged user domain fetch kar sakta hai
-app.get("/settings/email-domain", protect, async (req, res) => {
+// GET — public: koi bhi (including referral form) domain fetch kar sakta hai
+app.get("/settings/email-domain", async (req, res) => {
   try {
     const setting = await Settings.findOne({ key: "emailDomain" })
-    res.json({ domain: setting?.value || "" })
+    res.json({ domain: setting?.value || "@educa.com" })
   } catch (err) {
-    res.status(500).json({ message: err.message })
+    res.json({ domain: "@educa.com" })
   }
 })
 
