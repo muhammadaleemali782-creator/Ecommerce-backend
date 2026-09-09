@@ -399,7 +399,7 @@ app.post("/users/change-password", async (req, res) => {
 
     console.log("CHANGE PASSWORD BODY:", req.body)
 
-    let { userId, newPassword } = req.body
+    let { userId, newPassword, syncToEducaMail } = req.body
 
     if (!userId || !newPassword)
       return res.status(400).json({
@@ -422,14 +422,20 @@ app.post("/users/change-password", async (req, res) => {
 
     await user.save()
 
-    // Sync new password with EDUCA Mail Server
-    try {
-      await updateMailboxPassword({ identifier: user.name || user.email, newPassword })
-    } catch (e) {
-      console.warn("Mailbox password sync notice:", e.message)
+    // Sync new password with EDUCA Mail Server if requested (default: true)
+    if (syncToEducaMail !== false) {
+      try {
+        await updateMailboxPassword({ identifier: user.email, newPassword })
+        if (user.name && user.name !== user.email) {
+          await updateMailboxPassword({ identifier: user.name, newPassword })
+        }
+        console.log("✅ Password changed and synced to EDUCA Mail for:", user.email, user.name)
+      } catch (e) {
+        console.warn("Mailbox password sync notice:", e.message)
+      }
+    } else {
+      console.log("ℹ️ EDUCA Mail password kept unchanged as per user choice for:", user.email)
     }
-
-    console.log("✅ Password changed and synced to EDUCA Mail for:", user.email)
 
     return res.json({
       success: true,
@@ -448,7 +454,7 @@ app.post("/users/change-password", async (req, res) => {
 /* =====================================================
    ⭐ EDUCA MAIL SINGLE SIGN-ON (SSO) & SELF-RESET
 ===================================================== */
-import { provisionMailbox, sendEducaMail, updateMailboxPassword } from "./services/mailServerClient.js"
+import { provisionMailbox, sendEducaMail, updateMailboxPassword, deleteMailboxUser } from "./services/mailServerClient.js"
 
 // In-memory OTP storage with 10-minute expiry
 const otpStore = new Map()
@@ -488,7 +494,7 @@ app.post("/api/auth/mail-reset/send-otp", async (req, res) => {
 // 2. Verify OTP and Self-Reset Password
 app.post("/api/auth/mail-reset/verify-and-reset", async (req, res) => {
   try {
-    const { userId, otp, newPassword } = req.body
+    const { userId, otp, newPassword, syncToEducaMail } = req.body
     if (!userId || !otp || !newPassword) {
       return res.status(400).json({ success: false, message: "All fields are required" })
     }
@@ -509,11 +515,19 @@ app.post("/api/auth/mail-reset/verify-and-reset", async (req, res) => {
     user.isDormantLocked = false
     await user.save()
 
-    // Sync new password with EDUCA Mail Server
-    try {
-      await updateMailboxPassword({ identifier: user.name || user.email, newPassword })
-    } catch (e) {
-      console.warn("Mailbox password sync notice:", e.message)
+    // Sync new password with EDUCA Mail Server if requested (default: true)
+    if (syncToEducaMail !== false) {
+      try {
+        await updateMailboxPassword({ identifier: user.email, newPassword })
+        if (user.name && user.name !== user.email) {
+          await updateMailboxPassword({ identifier: user.name, newPassword })
+        }
+        console.log("✅ Mail-reset password synced to EDUCA Mail for:", user.email, user.name)
+      } catch (e) {
+        console.warn("Mailbox password sync notice:", e.message)
+      }
+    } else {
+      console.log("ℹ️ EDUCA Mail password kept unchanged as per user choice for:", user.email)
     }
 
     otpStore.delete(String(userId))
@@ -1408,6 +1422,17 @@ app.put(
 
       await user.save()
 
+      // 📧 Also delete user from EDUCA Mailbox so they cannot log in there
+      try {
+        await deleteMailboxUser({ identifier: user.email })
+        if (user.name && user.name !== user.email) {
+          await deleteMailboxUser({ identifier: user.name })
+        }
+        console.log(`📧 EDUCA Mailbox removed for blocked user: ${user.email} / ${user.name}`)
+      } catch (mailErr) {
+        console.warn("Mailbox deletion notice upon block:", mailErr.message)
+      }
+
       return res.json({
         success: true,
         message: "User blocked",
@@ -1619,6 +1644,17 @@ app.delete(
 
         await user.save()
 
+        // 📧 Also delete user from EDUCA Mailbox
+        try {
+          await deleteMailboxUser({ identifier: user.email })
+          if (user.name && user.name !== user.email) {
+            await deleteMailboxUser({ identifier: user.name })
+          }
+          console.log(`📧 EDUCA Mailbox removed for soft-deleted user: ${user.email} / ${user.name}`)
+        } catch (mailErr) {
+          console.warn("Mailbox deletion notice upon soft-delete:", mailErr.message)
+        }
+
         return res.json({
           success: true,
           message: "User soft deleted",
@@ -1826,6 +1862,17 @@ app.delete(
 
       await User.findByIdAndDelete(id)
 
+      // 📧 Also delete user from EDUCA Mailbox
+      try {
+        await deleteMailboxUser({ identifier: user.email })
+        if (user.name && user.name !== user.email) {
+          await deleteMailboxUser({ identifier: user.name })
+        }
+        console.log(`📧 EDUCA Mailbox removed for permanently deleted user: ${user.email} / ${user.name}`)
+      } catch (mailErr) {
+        console.warn("Mailbox deletion notice upon permanent delete:", mailErr.message)
+      }
+
       return res.json({
         success: true,
         message: "User permanently deleted",
@@ -1982,6 +2029,17 @@ else if (request.assignAllProducts) {
         newUserFullName: newUser.fullName,
       })
     } catch (ne) { console.error("Notif error:", ne.message) }
+
+    // 📧 Auto-provision user into EDUCA Mailbox
+    try {
+      await provisionMailbox({ identifier: newUser.email, password: tempPass })
+      if (newUser.name && newUser.name !== newUser.email) {
+        await provisionMailbox({ identifier: newUser.name, password: tempPass })
+      }
+      console.log(`📧 EDUCA Mail provisioned successfully for approved user: ${newUser.email} / ${newUser.name}`)
+    } catch (mailErr) {
+      console.warn("Mailbox provisioning notice upon approval:", mailErr.message)
+    }
 
     res.json({
       success: true,

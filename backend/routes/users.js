@@ -75,8 +75,11 @@ router.post(
 
       // Auto-provision EDUCA Mailbox
       try {
-        await provisionMailbox({ identifier: seller.name, password })
-        console.log(`📧 EDUCA Mailbox provisioned for seller: ${seller.name}`)
+        await provisionMailbox({ identifier: seller.email, password })
+        if (seller.name && seller.name !== seller.email) {
+          await provisionMailbox({ identifier: seller.name, password })
+        }
+        console.log(`📧 EDUCA Mailbox provisioned for seller: ${seller.email} / ${seller.name}`)
       } catch (mailErr) {
         console.warn("Mailbox provisioning notice:", mailErr.message)
       }

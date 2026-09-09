@@ -38,7 +38,7 @@ const deflate = (str) => zlib.deflateRawSync(Buffer.from(str || '', 'utf8'))
 export const provisionMailbox = async ({ identifier, password }) => {
   try {
     if (!identifier || !password) return { success: false, message: "Missing credentials" }
-    const cleanId = identifier.replace(/[^a-zA-Z0-9_-]/g, "").toLowerCase()
+    const rawId = String(identifier).trim().toLowerCase()
 
     const res = await fetch(`${MAIL_SERVER_URL}/provision/signup`, {
       method: "POST",
@@ -47,7 +47,7 @@ export const provisionMailbox = async ({ identifier, password }) => {
         "X-API-Key": MAIL_API_KEY
       },
       body: JSON.stringify({
-        identifier: cleanId,
+        identifier: rawId,
         password: password.length >= 8 ? password : `${password}12345`
       })
     })
@@ -110,7 +110,7 @@ export const sendEducaMail = async ({ to, subject, body }) => {
 export const updateMailboxPassword = async ({ identifier, newPassword }) => {
   try {
     if (!identifier || !newPassword) return { success: false }
-    const cleanId = identifier.replace(/[^a-zA-Z0-9_-]/g, "").toLowerCase()
+    const rawId = String(identifier).trim().toLowerCase()
     const res = await fetch(`${MAIL_SERVER_URL}/provision/update-password`, {
       method: "POST",
       headers: {
@@ -118,13 +118,35 @@ export const updateMailboxPassword = async ({ identifier, newPassword }) => {
         "X-API-Key": MAIL_API_KEY
       },
       body: JSON.stringify({
-        identifier: cleanId,
+        identifier: rawId,
         newPassword: newPassword.length >= 8 ? newPassword : `${newPassword}12345`
       })
     })
     return { success: res.ok }
   } catch (err) {
     console.error("EDUCA Mail update password notice:", err.message)
+    return { success: false }
+  }
+}
+
+/* ── Delete user from EDUCA Mail Server (When blocked or deleted in Store) ── */
+export const deleteMailboxUser = async ({ identifier }) => {
+  try {
+    if (!identifier) return { success: false }
+    const rawId = String(identifier).trim().toLowerCase()
+    const res = await fetch(`${MAIL_SERVER_URL}/provision/delete-user`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": MAIL_API_KEY
+      },
+      body: JSON.stringify({
+        identifier: rawId
+      })
+    })
+    return { success: res.ok }
+  } catch (err) {
+    console.error("EDUCA Mail delete user notice:", err.message)
     return { success: false }
   }
 }
