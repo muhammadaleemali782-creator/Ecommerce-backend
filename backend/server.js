@@ -798,6 +798,143 @@ app.post("/requests/create", protect, async (req, res) => {
   }
 })
 
+/* =====================================================
+   PUBLIC REFERRAL INFO (NO LOGIN REQUIRED)
+   Checks if referral code exists and returns referrer info + allowed roles
+===================================================== */
+app.get("/requests/referral-info", async (req, res) => {
+  try {
+    const { ref } = req.query
+    if (!ref) {
+      return res.status(400).json({ valid: false, message: "Referral code missing" })
+    }
+
+    const cleanRef = String(ref).trim()
+    const referrer = await User.findOne({
+      name: { $regex: new RegExp(`^${cleanRef}$`, "i") },
+      isDeleted: { $ne: true },
+      isBlocked: { $ne: true }
+    }).select("name fullName role")
+
+    if (!referrer) {
+      return res.status(404).json({ valid: false, message: "Referral link invalid hai ya user active nahi hai" })
+    }
+
+    let allowedRoles = ["user"]
+    if (referrer.role === "admin") allowedRoles = ["distributor", "seller", "user"]
+    else if (referrer.role === "distributor") allowedRoles = ["distributor", "seller"]
+    else if (referrer.role === "seller") allowedRoles = ["seller", "user"]
+
+    res.json({
+      valid: true,
+      referrer: {
+        id: referrer._id,
+        name: referrer.name,
+        fullName: referrer.fullName || referrer.name,
+        role: referrer.role
+      },
+      allowedRoles
+    })
+  } catch (err) {
+    res.status(500).json({ valid: false, message: err.message })
+  }
+})
+
+/* =====================================================
+   PUBLIC REFERRAL REGISTRATION SUBMISSION (NO LOGIN REQUIRED)
+===================================================== */
+app.post("/requests/public-create", async (req, res) => {
+  try {
+    const { ref, type, name, email, phone, address, idType, idNumber } = req.body
+
+    if (!ref || !type || !name || !email) {
+      return res.status(400).json({ message: "Referral code, type, name aur email zaroori hain" })
+    }
+
+    const cleanRef = String(ref).trim()
+    const referrer = await User.findOne({
+      name: { $regex: new RegExp(`^${cleanRef}$`, "i") },
+      isDeleted: { $ne: true },
+      isBlocked: { $ne: true }
+    })
+
+    if (!referrer) {
+      return res.status(404).json({ message: "Referral code invalid hai ya referrer active nahi hai" })
+    }
+
+    // Role check
+    let isAllowed = false
+    if (referrer.role === "admin") isAllowed = ["distributor", "seller", "user"].includes(type)
+    else if (referrer.role === "distributor") isAllowed = ["distributor", "seller"].includes(type)
+    else if (referrer.role === "seller") isAllowed = ["seller", "user"].includes(type)
+    else if (referrer.role === "user") isAllowed = type === "user"
+
+    if (!isAllowed) {
+      return res.status(403).json({ message: `Is referral link se ${type} banana allowed nahi hai` })
+    }
+
+    const cleanEmail = email.trim().toLowerCase()
+    const userWithEmail = await User.findOne({ email: cleanEmail })
+    if (userWithEmail) {
+      return res.status(409).json({ message: "Ye email already registered hai" })
+    }
+
+    // Aadhar / PAN check
+    const idCheck = validateIdNumber(idType, idNumber)
+    if (!idCheck.valid) {
+      return res.status(400).json({ message: idCheck.message })
+    }
+    const cleanIdNumber = idCheck.value
+
+    const idInUse = await User.findOne({ idNumber: cleanIdNumber })
+    if (idInUse) {
+      return res.status(409).json({ message: "Ye Aadhar/PAN number already kisi account se linked hai" })
+    }
+
+    const idInPending = await UserRequest.findOne({ idNumber: cleanIdNumber, status: "pending" })
+    if (idInPending) {
+      return res.status(409).json({ message: "Ye Aadhar/PAN number ki request pehle se pending hai" })
+    }
+
+    const request = await UserRequest.create({
+      requestedBy: referrer._id,
+      requestedForId: referrer._id, // Placed directly under referrer in hierarchy!
+      type,
+      name: name.trim(),
+      email: cleanEmail,
+      phone: (phone || "").trim(),
+      address: (address || "").trim(),
+      idType,
+      idNumber: cleanIdNumber,
+      status: "pending",
+      source: "referral_link",
+      referralCode: referrer.name
+    })
+
+    // Notify Admins
+    try {
+      const admins = await User.find({ role: "admin", isDeleted: { $ne: true } }).select("_id")
+      const adminIds = admins.map(a => a._id)
+      await notifyNewUserRequest({
+        request,
+        requesterName: `${referrer.name} (Referral Link)`,
+        requesterRole: referrer.role,
+        adminIds
+      })
+    } catch (ne) {
+      console.error("❌ Notif error in public-create:", ne.message)
+    }
+
+    res.json({
+      success: true,
+      message: "Request successfully submit ho gayi hai! Admin review ke baad approve karega.",
+      requestId: request._id
+    })
+  } catch (err) {
+    res.status(500).json({ message: err.message })
+  }
+})
+
 app.get("/requests/all", protect, allowRoles("admin"), async (req, res) => {
   try {
 
@@ -1841,6 +1978,8 @@ else if (request.assignAllProducts) {
         requesterId: request.requestedBy,
         requestedForId: request.requestedForId,
         newUserName: newUser.name,
+        tempPassword: tempPass,
+        newUserFullName: newUser.fullName,
       })
     } catch (ne) { console.error("Notif error:", ne.message) }
 

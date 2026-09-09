@@ -23,7 +23,6 @@ async function sendPush(userId, title, body) {
       },
     })
   } catch (err) {
-    // Token expire/invalid ho sakta hai (app uninstall, etc.) — bas log karo
     console.error("❌ Push send error:", err.message)
   }
 }
@@ -168,11 +167,6 @@ export async function notifyRejected({ order, rejectorName, rejectorRole }) {
         targetPage: "seller-orders",
       })
   }
-
-  // Agar distributor ne reject kiya, admin ko bhi batao
-  if (rejectorRole === "distributor" && order.distributorId) {
-    // No need to notify distributor themselves
-  }
 }
 
 /* ─────────────────────────────────────────
@@ -198,8 +192,10 @@ export async function notifyNewUserRequest({ request, requesterName, requesterRo
    Admin ne request approve ki
    Notify: requester + requestedFor (jiske liye tha, agar requester se alag hai)
 ───────────────────────────────────────── */
-export async function notifyRequestApproved({ request, requesterId, requestedForId, newUserName }) {
-  const msg = `✅ Aapki "${request.type}" account request approve ho gayi! Naya user: ${newUserName}`
+export async function notifyRequestApproved({ request, requesterId, requestedForId, newUserName, tempPassword, newUserFullName }) {
+  const targetName = newUserFullName || request.name || "User"
+  const passInfo = tempPassword ? ` | Password: ${tempPassword}` : ""
+  const msg = `✅ ${targetName} ka "${request.type}" account create ho gaya hai! User ID: ${newUserName}${passInfo}. Kripya user ko details bhej dijiye.`
 
   if (requesterId) {
     await createNotif(requesterId, "general", msg, {
@@ -212,7 +208,7 @@ export async function notifyRequestApproved({ request, requesterId, requestedFor
   // Agar requestedFor requester se alag hai, use bhi batao
   if (requestedForId && String(requestedForId) !== String(requesterId)) {
     await createNotif(requestedForId, "general",
-      `✅ Aapke liye naya "${request.type}" account create ho gaya hai: ${newUserName}`, {
+      `✅ Aapke referral se ${targetName} ka "${request.type}" account create ho gaya hai! User ID: ${newUserName}${passInfo}. Kripya user ko details bhej dijiye.`, {
         senderName: "Admin",
         senderRole: "admin",
         targetPage: "my-network",

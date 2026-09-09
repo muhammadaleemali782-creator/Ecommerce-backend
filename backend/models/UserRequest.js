@@ -136,10 +136,18 @@ const requestSchema = new mongoose.Schema({
     default: null
   },
 
-  rejectedReason: {
+  /* ================= SOURCE / REFERRAL ================= */
+  source: {
     type: String,
+    enum: ["direct", "referral_link"],
+    default: "direct"
+  },
+
+  referralCode: {
+    type: String,
+    trim: true,
     default: ""
-  }
+  },
 
 }, { timestamps: true })
 
