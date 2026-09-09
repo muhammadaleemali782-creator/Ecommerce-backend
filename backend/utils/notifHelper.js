@@ -36,6 +36,8 @@ async function sendPush(userId, title, body) {
 ───────────────────────────────────────────────────────── */
 export async function createNotif(userId, type, message, opts = {}) {
   try {
+    if (!userId) return // 🛡️ Recipient ID hona laazmi hai
+
     await Notification.create({
       userId,
       type,
@@ -56,47 +58,74 @@ export async function createNotif(userId, type, message, opts = {}) {
 
 /* ─────────────────────────────────────────────────────────
    notifyNewOrder — Naya order create hua
-   Notify: distributor + admin
+   Notify: buyer (confirmation), assigned distributor, admins
 ───────────────────────────────────────────────────────── */
 export async function notifyNewOrder({ order, seller, distributor, adminIds = [] }) {
-  const amt  = `₹${Number(order.total || 0).toLocaleString("en-IN")}`
-  const name = seller?.name || "Someone"
-  const role = seller?.role || "seller"
+  const ordShort = String(order._id).slice(-6)
+  const amt      = `₹${Number(order.total || 0).toLocaleString("en-IN")}`
+  const name     = seller?.name || "Someone"
+  const role     = seller?.role || "seller"
+  const buyerId  = String(seller?._id || order.placedById || order.userId || "")
 
-  const msg = `🛒 ${name} (${role}) ne nayi order di — ${amt}`
-
-  // Distributor ko batao
-  if (distributor) {
-    await createNotif(distributor._id, "new_order", msg, {
-      senderName: name,
-      senderRole: role,
-      orderId:    order._id,
-      targetPage: "distributor-orders",
-    })
+  // 1. Buyer ko confirmation notification bhejo
+  if (buyerId) {
+    await createNotif(buyerId, "new_order",
+      `🛒 Aapki order #${ordShort} successfully place ho gayi hai (${amt})`, {
+        senderName: "EDUCA Store",
+        senderRole: "system",
+        orderId:    order._id,
+        targetPage: role === "distributor" ? "distributor-orders" : role === "seller" ? "seller-orders" : "orders",
+      })
   }
 
-  // Sab admins ko batao
+  // 2. Assigned Distributor ko batao (sirf agar distributor buyer se alag ho)
+  if (distributor && String(distributor._id) !== buyerId) {
+    await createNotif(distributor._id, "new_order",
+      `🛒 ${name} (${role}) ne nayi order #${ordShort} di — ${amt}`, {
+        senderName: name,
+        senderRole: role,
+        orderId:    order._id,
+        targetPage: "distributor-orders",
+      })
+  }
+
+  // 3. Admins ko batao (lekin agar buyer khud admin hai to use alert mat bhejo)
   for (const adminId of adminIds) {
-    await createNotif(adminId, "new_order", msg, {
-      senderName: name,
-      senderRole: role,
-      orderId:    order._id,
-      targetPage: "admin-orders",
-    })
+    if (String(adminId) !== buyerId) {
+      await createNotif(adminId, "new_order",
+        `🛒 ${name} (${role}) ne nayi order #${ordShort} di — ${amt}`, {
+          senderName: name,
+          senderRole: role,
+          orderId:    order._id,
+          targetPage: "admin-orders",
+        })
+    }
   }
 }
 
 /* ─────────────────────────────────────────────────────────
    notifyDistApproved — Distributor ne approve kiya
-   Notify: seller + admin
+   Notify: buyer/seller + admins
 ───────────────────────────────────────────────────────── */
 export async function notifyDistApproved({ order, distributor, adminIds = [] }) {
   const ordShort = String(order._id).slice(-6)
   const distName = distributor?.name || "Distributor"
   const amt      = `₹${Number(order.total || 0).toLocaleString("en-IN")}`
+  const distId   = String(distributor?._id || "")
 
-  // Seller ko batao
-  if (order.sellerId) {
+  // 1. Customer/User ko batao (agar user alag hai)
+  if (order.userId && String(order.userId) !== distId) {
+    await createNotif(order.userId, "dist_approved",
+      `✅ Aapki order #${ordShort} distributor (${distName}) ne approve kar di (${amt})`, {
+        senderName: distName,
+        senderRole: "distributor",
+        orderId:    order._id,
+        targetPage: "orders",
+      })
+  }
+
+  // 2. Seller ko batao (sirf agar seller distributor se alag hai aur user se bhi alag hai)
+  if (order.sellerId && String(order.sellerId) !== distId && String(order.sellerId) !== String(order.userId)) {
     await createNotif(order.sellerId, "dist_approved",
       `✅ ${distName} ne aapki order #${ordShort} approve kar di (${amt})`, {
         senderName: distName,
@@ -106,30 +135,43 @@ export async function notifyDistApproved({ order, distributor, adminIds = [] }) 
       })
   }
 
-  // Admin ko batao
+  // 3. Admin ko alert bhejo (sirf un admins ko jo is action ke distributor nahi hain)
   for (const adminId of adminIds) {
-    await createNotif(adminId, "dist_approved",
-      `🔵 ${distName} ne order #${ordShort} approve kiya — Admin approval baaki (${amt})`, {
-        senderName: distName,
-        senderRole: "distributor",
-        orderId:    order._id,
-        targetPage: "admin-orders",
-      })
+    if (String(adminId) !== distId) {
+      await createNotif(adminId, "dist_approved",
+        `🔵 ${distName} ne order #${ordShort} approve kiya — Admin approval baaki (${amt})`, {
+          senderName: distName,
+          senderRole: "distributor",
+          orderId:    order._id,
+          targetPage: "admin-orders",
+        })
+    }
   }
 }
 
 /* ─────────────────────────────────────────────────────────
    notifyConfirmed — Admin ne final confirm kiya
-   Notify: seller + distributor
+   Notify: buyer (user/seller) + distributor
 ───────────────────────────────────────────────────────── */
 export async function notifyConfirmed({ order }) {
   const ordShort = String(order._id).slice(-6)
   const amt      = `₹${Number(order.total || 0).toLocaleString("en-IN")}`
 
-  // Seller ko batao
-  if (order.sellerId) {
+  // 1. Actual Customer/User ko confirm karo
+  if (order.userId) {
+    await createNotif(order.userId, "confirmed",
+      `🎉 Aapki order #${ordShort} confirm ho gayi hai! (${amt})`, {
+        senderName: "Admin",
+        senderRole: "admin",
+        orderId:    order._id,
+        targetPage: "orders",
+      })
+  }
+
+  // 2. Seller ko batao (sirf agar seller userId se alag ho)
+  if (order.sellerId && String(order.sellerId) !== String(order.userId)) {
     await createNotif(order.sellerId, "confirmed",
-      `🎉 Aapki order #${ordShort} confirm ho gayi! PPC + Commission mil gayi (${amt})`, {
+      `🎉 Order #${ordShort} confirm ho gayi! PPC + Commission credit ho gayi (${amt})`, {
         senderName: "Admin",
         senderRole: "admin",
         orderId:    order._id,
@@ -137,8 +179,10 @@ export async function notifyConfirmed({ order }) {
       })
   }
 
-  // Distributor ko batao
-  if (order.distributorId) {
+  // 3. Distributor ko batao (sirf agar distributor sellerId aur userId se alag ho)
+  if (order.distributorId &&
+      String(order.distributorId) !== String(order.sellerId) &&
+      String(order.distributorId) !== String(order.userId)) {
     await createNotif(order.distributorId, "confirmed",
       `🎉 Order #${ordShort} Admin ne confirm kar di! (${amt})`, {
         senderName: "Admin",
@@ -151,14 +195,26 @@ export async function notifyConfirmed({ order }) {
 
 /* ─────────────────────────────────────────────────────────
    notifyRejected — Order reject hui
-   Notify: seller
+   Notify: buyer / seller
 ───────────────────────────────────────────────────────── */
 export async function notifyRejected({ order, rejectorName, rejectorRole }) {
   const ordShort = String(order._id).slice(-6)
   const amt      = `₹${Number(order.total || 0).toLocaleString("en-IN")}`
-  const name     = rejectorName || "Admin/Distributor"
+  const name     = rejectorName || "Admin"
 
-  if (order.sellerId) {
+  // 1. User/Customer ko batao
+  if (order.userId) {
+    await createNotif(order.userId, "rejected",
+      `❌ Aapki order #${ordShort} reject kar di gayi (${amt})`, {
+        senderName: name,
+        senderRole: rejectorRole,
+        orderId:    order._id,
+        targetPage: "orders",
+      })
+  }
+
+  // 2. Seller ko batao (agar seller userId se alag ho)
+  if (order.sellerId && String(order.sellerId) !== String(order.userId)) {
     await createNotif(order.sellerId, "rejected",
       `❌ ${name} (${rejectorRole}) ne order #${ordShort} reject kar di (${amt})`, {
         senderName: name,
@@ -172,32 +228,35 @@ export async function notifyRejected({ order, rejectorName, rejectorRole }) {
 /* ─────────────────────────────────────────
    notifyNewUserRequest
    Naya user-request banaya gaya (raise-request)
-   Notify: admins
+   Notify: admins (except requester)
 ───────────────────────────────────────── */
-export async function notifyNewUserRequest({ request, requesterName, requesterRole, adminIds = [] }) {
+export async function notifyNewUserRequest({ request, requesterName, requesterRole, requesterId, adminIds = [] }) {
   const forText = request.requestedForId ? "kisi member ke liye" : "apne liye"
   const msg = `📝 ${requesterName} (${requesterRole}) ne ${forText} naya "${request.type}" account request kiya hai — ${request.name}`
 
   for (const adminId of adminIds) {
-    await createNotif(adminId, "general", msg, {
-      senderName: requesterName,
-      senderRole: requesterRole,
-      targetPage: "admin-requests",
-    })
+    if (String(adminId) !== String(requesterId)) {
+      await createNotif(adminId, "general", msg, {
+        senderName: requesterName,
+        senderRole: requesterRole,
+        targetPage: "admin-requests",
+      })
+    }
   }
 }
 
 /* ─────────────────────────────────────────
    notifyRequestApproved
    Admin ne request approve ki
-   Notify: requester + requestedFor (jiske liye tha, agar requester se alag hai)
+   Notify: requester + requestedFor (excluding admin who approved)
 ───────────────────────────────────────── */
-export async function notifyRequestApproved({ request, requesterId, requestedForId, newUserName, tempPassword, newUserFullName }) {
+export async function notifyRequestApproved({ request, requesterId, requestedForId, newUserName, tempPassword, newUserFullName, adminId }) {
   const targetName = newUserFullName || request.name || "User"
-  const passInfo = tempPassword ? ` | Password: ${tempPassword}` : ""
-  const msg = `✅ ${targetName} ka "${request.type}" account create ho gaya hai! User ID: ${newUserName}${passInfo}. Kripya user ko details bhej dijiye.`
+  const passInfo   = tempPassword ? ` | Password: ${tempPassword}` : ""
+  const msg        = `✅ ${targetName} ka "${request.type}" account create ho gaya hai! User ID: ${newUserName}${passInfo}. Kripya user ko details bhej dijiye.`
 
-  if (requesterId) {
+  // 1. Requester ko batao (agar requester admin khud nahi hai)
+  if (requesterId && String(requesterId) !== String(adminId)) {
     await createNotif(requesterId, "general", msg, {
       senderName: "Admin",
       senderRole: "admin",
@@ -205,8 +264,10 @@ export async function notifyRequestApproved({ request, requesterId, requestedFor
     })
   }
 
-  // Agar requestedFor requester se alag hai, use bhi batao
-  if (requestedForId && String(requestedForId) !== String(requesterId)) {
+  // 2. Agar requestedFor requester aur admin dono se alag hai, use bhi batao
+  if (requestedForId &&
+      String(requestedForId) !== String(requesterId) &&
+      String(requestedForId) !== String(adminId)) {
     await createNotif(requestedForId, "general",
       `✅ Aapke referral se ${targetName} ka "${request.type}" account create ho gaya hai! User ID: ${newUserName}${passInfo}. Kripya user ko details bhej dijiye.`, {
         senderName: "Admin",
@@ -219,12 +280,12 @@ export async function notifyRequestApproved({ request, requesterId, requestedFor
 /* ─────────────────────────────────────────
    notifyRequestRejected
    Admin ne request reject ki
-   Notify: requester + requestedFor (agar alag hai)
+   Notify: requester + requestedFor (excluding admin)
 ───────────────────────────────────────── */
-export async function notifyRequestRejected({ request, requesterId, requestedForId }) {
+export async function notifyRequestRejected({ request, requesterId, requestedForId, adminId }) {
   const msg = `❌ Aapki "${request.type}" account request reject ho gayi (${request.name})`
 
-  if (requesterId) {
+  if (requesterId && String(requesterId) !== String(adminId)) {
     await createNotif(requesterId, "general", msg, {
       senderName: "Admin",
       senderRole: "admin",
@@ -232,7 +293,9 @@ export async function notifyRequestRejected({ request, requesterId, requestedFor
     })
   }
 
-  if (requestedForId && String(requestedForId) !== String(requesterId)) {
+  if (requestedForId &&
+      String(requestedForId) !== String(requesterId) &&
+      String(requestedForId) !== String(adminId)) {
     await createNotif(requestedForId, "general",
       `❌ Aapke liye request kiya gaya "${request.type}" account reject ho gaya (${request.name})`, {
         senderName: "Admin",

@@ -800,6 +800,7 @@ app.post("/requests/create", protect, async (req, res) => {
         request,
         requesterName: requester?.name || "Someone",
         requesterRole: requester?.role || req.user.role,
+        requesterId: req.user.id,
         adminIds,
       })
       console.log("🔔 [DEBUG] notifyNewUserRequest completed successfully")
@@ -933,6 +934,7 @@ app.post("/requests/public-create", async (req, res) => {
         request,
         requesterName: `${referrer.name} (Referral Link)`,
         requesterRole: referrer.role,
+        requesterId: referrer._id,
         adminIds
       })
     } catch (ne) {
@@ -2066,6 +2068,7 @@ else if (request.assignAllProducts) {
         newUserName: newUser.name,
         tempPassword: tempPass,
         newUserFullName: newUser.fullName,
+        adminId: req.user.id,
       })
     } catch (ne) { console.error("Notif error:", ne.message) }
 
@@ -2116,6 +2119,7 @@ app.post("/requests/reject/:id", protect, allowRoles("admin"), async (req, res) 
         request,
         requesterId: request.requestedBy,
         requestedForId: request.requestedForId,
+        adminId: req.user.id,
       })
     } catch (ne) { console.error("Notif error:", ne.message) }
 
