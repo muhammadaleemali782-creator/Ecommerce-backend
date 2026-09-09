@@ -1034,9 +1034,18 @@ app.get("/requests/my", protect, async (req, res) => {
     })
       .populate("requestedBy",   "name role")
       .populate("requestedForId", "name role")
+      .populate("createdUserId",  "_id name email isDeleted")
       .sort({ updatedAt: -1 })
+      .lean()
 
-    res.json(requests)
+    // Filter out users who have been deleted or permanently removed from User collection
+    const activeRequests = requests.filter(r => {
+      if (!r.createdUserId) return false // User no longer exists in DB (permanently deleted)
+      if (r.createdUserId.isDeleted) return false // Soft-deleted user
+      return true
+    })
+
+    res.json(activeRequests)
   } catch (err) {
     res.status(500).json({ message: err.message })
   }
@@ -1644,6 +1653,21 @@ app.delete(
 
         await user.save()
 
+        // 🧹 Also remove creation requests from "MY TEAM" / UserRequests
+        try {
+          await UserRequest.deleteMany({
+            $or: [
+              { createdUserId: user._id },
+              { createdUserName: user.name },
+              { createdUserEmail: user.email },
+              { email: user.email }
+            ]
+          })
+          console.log(`🧹 Cleaned up UserRequest history from MY TEAM for soft-deleted user: ${user.email} / ${user.name}`)
+        } catch (reqErr) {
+          console.warn("UserRequest cleanup notice on soft delete:", reqErr.message)
+        }
+
         // 📧 Also delete user from EDUCA Mailbox
         try {
           await deleteMailboxUser({ identifier: user.email })
@@ -1861,6 +1885,21 @@ app.delete(
       }
 
       await User.findByIdAndDelete(id)
+
+      // 🧹 Remove corresponding creation requests from "MY TEAM" / UserRequests
+      try {
+        await UserRequest.deleteMany({
+          $or: [
+            { createdUserId: id },
+            { createdUserName: user.name },
+            { createdUserEmail: user.email },
+            { email: user.email }
+          ]
+        })
+        console.log(`🧹 Cleaned up UserRequest history from MY TEAM for deleted user: ${user.email} / ${user.name}`)
+      } catch (reqErr) {
+        console.warn("UserRequest cleanup notice on permanent delete:", reqErr.message)
+      }
 
       // 📧 Also delete user from EDUCA Mailbox
       try {
