@@ -425,9 +425,9 @@ app.post("/users/change-password", async (req, res) => {
     // Sync new password with EDUCA Mail Server if requested (default: true)
     if (syncToEducaMail !== false) {
       try {
-        await updateMailboxPassword({ identifier: user.email, newPassword })
+        await updateMailboxPassword({ identifier: user.email, newPassword, passwordHash: hashed })
         if (user.name && user.name !== user.email) {
-          await updateMailboxPassword({ identifier: user.name, newPassword })
+          await updateMailboxPassword({ identifier: user.name, newPassword, passwordHash: hashed })
         }
         console.log("✅ Password changed and synced to EDUCA Mail for:", user.email, user.name)
       } catch (e) {
@@ -518,9 +518,9 @@ app.post("/api/auth/mail-reset/verify-and-reset", async (req, res) => {
     // Sync new password with EDUCA Mail Server if requested (default: true)
     if (syncToEducaMail !== false) {
       try {
-        await updateMailboxPassword({ identifier: user.email, newPassword })
+        await updateMailboxPassword({ identifier: user.email, newPassword, passwordHash: hash })
         if (user.name && user.name !== user.email) {
-          await updateMailboxPassword({ identifier: user.name, newPassword })
+          await updateMailboxPassword({ identifier: user.name, newPassword, passwordHash: hash })
         }
         console.log("✅ Mail-reset password synced to EDUCA Mail for:", user.email, user.name)
       } catch (e) {
@@ -1494,6 +1494,17 @@ app.put(
 
       await user.save()
 
+      // 📧 Sync new temp password to EDUCA Mail
+      try {
+        await updateMailboxPassword({ identifier: user.email, newPassword: tempPassword, passwordHash: hashed })
+        if (user.name && user.name !== user.email) {
+          await updateMailboxPassword({ identifier: user.name, newPassword: tempPassword, passwordHash: hashed })
+        }
+        console.log("📧 Temp password synced to EDUCA Mail for:", user.email, user.name)
+      } catch (mErr) {
+        console.warn("Mailbox temp password sync notice:", mErr.message)
+      }
+
       console.log("🔑 TEMP PASSWORD GENERATED:", tempPassword)
 
       return res.json({
@@ -2074,9 +2085,9 @@ else if (request.assignAllProducts) {
 
     // 📧 Auto-provision user into EDUCA Mailbox
     try {
-      await provisionMailbox({ identifier: newUser.email, password: tempPass })
+      await provisionMailbox({ identifier: newUser.email, password: tempPass, passwordHash: hashed })
       if (newUser.name && newUser.name !== newUser.email) {
-        await provisionMailbox({ identifier: newUser.name, password: tempPass })
+        await provisionMailbox({ identifier: newUser.name, password: tempPass, passwordHash: hashed })
       }
       console.log(`📧 EDUCA Mail provisioned successfully for approved user: ${newUser.email} / ${newUser.name}`)
     } catch (mailErr) {
