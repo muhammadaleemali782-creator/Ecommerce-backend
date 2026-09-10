@@ -668,10 +668,6 @@ export const getMyPPCWallet = async (req, res) => {
           note:           "Seller network se aaya — withdraw ho sakta hai"
         },
       }
-      // ✅ Distributor's OWN Direct Seller Wallet level data (separate from Seller role's)
-      response.sellerLevelUpThresholds = settings.distSellerLevelUpThresholds || { level1:50, level2:200, level3:500, level4:2000 }
-      response.sellerLevelNames        = settings.distSellerLevelNames        || { level0:"Seller", level1:"Silver Seller", level2:"Gold Seller", level3:"Platinum Seller", level4:"Diamond Seller" }
-      response.sellerLevelRewards      = settings.distSellerLevelRewards      || { level1:"🎁 ₹250 bonus credit", level2:"🎁 ₹750 bonus credit", level3:"🎁 ₹1500 + free kit", level4:"🎁 ₹5000 + trip" }
     }
 
     /* ─── SELLER WALLETS ─── */
@@ -707,46 +703,7 @@ export const getMyPPCWallet = async (req, res) => {
           note:           "Neeche wale seller ki sales se mila (25% share)"
         },
       }
-      const totalSellerPPC = (user.userWalletAsSeller || 0) + (user.sellerWalletAsSeller || 0)
-      const thresholds = settings.sellerLevelUpThresholds || { level1:50, level2:200, level3:500, level4:2000 }
-      const levelNames = settings.sellerLevelNames || { level0:"Direct Seller", level1:"Silver Seller", level2:"Gold Seller", level3:"Platinum Seller", level4:"Diamond Seller" }
-      const levelRewards = settings.sellerLevelRewards || { level1:"🎁 ₹250 bonus credit", level2:"🎁 ₹750 bonus credit", level3:"🎁 ₹1500 + free kit", level4:"🎁 ₹5000 + trip" }
-
-      let currentLevel = 0
-      if (totalSellerPPC >= (thresholds.level4 || 2000))      currentLevel = 4
-      else if (totalSellerPPC >= (thresholds.level3 || 500))  currentLevel = 3
-      else if (totalSellerPPC >= (thresholds.level2 || 200))  currentLevel = 2
-      else if (totalSellerPPC >= (thresholds.level1 || 50))   currentLevel = 1
-
-      const nextLevel     = currentLevel < 4 ? currentLevel + 1 : null
-      const nextThreshold = nextLevel ? (thresholds[`level${nextLevel}`] || 0) : null
-      const prevThreshold = currentLevel > 0 ? (thresholds[`level${currentLevel}`] || 0) : 0
-      const progress      = nextThreshold
-        ? Math.min(100, Math.round(((totalSellerPPC - prevThreshold) / (nextThreshold - prevThreshold)) * 100))
-        : 100
-
-      response.totalSellerPPC = totalSellerPPC
-      response.unifiedSellerReward = {
-        totalPPC: totalSellerPPC,
-        currentLevel,
-        currentLevelName: levelNames[`level${currentLevel}`] || "Direct Seller",
-        nextLevelName: nextLevel ? (levelNames[`level${nextLevel}`] || "") : null,
-        nextThreshold,
-        prevThreshold,
-        progress,
-        thresholds,
-        levelNames,
-        levelRewards
-      }
-
-      // ✅ Seller's OWN Direct Seller Wallet level data (admin PPC settings)
-      response.sellerLevelUpThresholds = thresholds
-      response.sellerLevelNames        = levelNames
-      response.sellerLevelRewards      = levelRewards
-      // Backward compatibility
-      response.userWalletLevelUpThresholds = thresholds
-      response.userWalletLevelNames        = levelNames
-      response.userWalletLevelRewards      = levelRewards
+      response.totalSellerPPC = (user.userWalletAsSeller || 0) + (user.sellerWalletAsSeller || 0)
     }
 
     res.json(response)

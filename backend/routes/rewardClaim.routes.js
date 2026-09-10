@@ -17,36 +17,6 @@ const router = express.Router()
    admin settings key + default values
 ===================================================== */
 const WALLET_CONFIG = {
-  userWalletAsSeller: {
-    role: "seller",
-    ppcField: "userWalletAsSeller",
-    thresholdsKey: "userWalletLevelUpThresholds",
-    namesKey: "userWalletLevelNames",
-    rewardsKey: "userWalletLevelRewards",
-    defaultThresholds: { level1: 50, level2: 200, level3: 500, level4: 2000 },
-    defaultNames: { level0: "User", level1: "Silver User", level2: "Gold User", level3: "Platinum User", level4: "Diamond User" },
-    defaultRewards: { level1: "🎁 ₹250 bonus credit", level2: "🎁 ₹750 bonus credit", level3: "🎁 ₹1500 + free kit", level4: "🎁 ₹5000 + trip" },
-  },
-  sellerWalletAsSeller: {
-    role: "seller",
-    ppcField: "sellerWalletAsSeller",
-    thresholdsKey: "sellerLevelUpThresholds",
-    namesKey: "sellerLevelNames",
-    rewardsKey: "sellerLevelRewards",
-    defaultThresholds: { level1: 50, level2: 200, level3: 500, level4: 2000 },
-    defaultNames: { level0: "Seller", level1: "Silver Seller", level2: "Gold Seller", level3: "Platinum Seller", level4: "Diamond Seller" },
-    defaultRewards: { level1: "🎁 ₹250 bonus credit", level2: "🎁 ₹750 bonus credit", level3: "🎁 ₹1500 + free kit", level4: "🎁 ₹5000 + trip" },
-  },
-  distSellerWallet: {
-    role: "distributor",
-    ppcField: "sellerWallet",
-    thresholdsKey: "distSellerLevelUpThresholds",
-    namesKey: "distSellerLevelNames",
-    rewardsKey: "distSellerLevelRewards",
-    defaultThresholds: { level1: 50, level2: 200, level3: 500, level4: 2000 },
-    defaultNames: { level0: "Seller", level1: "Silver Seller", level2: "Gold Seller", level3: "Platinum Seller", level4: "Diamond Seller" },
-    defaultRewards: { level1: "🎁 ₹250 bonus credit", level2: "🎁 ₹750 bonus credit", level3: "🎁 ₹1500 + free kit", level4: "🎁 ₹5000 + trip" },
-  },
   distributorWallet: {
     role: "distributor",
     ppcField: "distributorWallet",
