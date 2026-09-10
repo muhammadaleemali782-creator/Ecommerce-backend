@@ -110,7 +110,7 @@ router.get("/tree", auth, async (req, res) => {
   try {
     console.log("🌐 Network tree requested by:", req.user?.id, req.user?.role)
 
-    const users = await User.find({}, "name role parentId").lean()
+    const users = await User.find({ isDeleted: { $ne: true } }, "name fullName email role parentId").lean()
 
     const buildTree = (pid) =>
       users
@@ -118,6 +118,8 @@ router.get("/tree", auth, async (req, res) => {
         .map(u => ({
           id: String(u._id),
           name: u.name,
+          fullName: u.fullName || "",
+          email: u.email || "",
           role: u.role,
           children: buildTree(String(u._id))
         }))
@@ -138,13 +140,15 @@ router.get("/tree", auth, async (req, res) => {
       }).map(u => ({
         id: String(u._id),
         name: u.name,
+        fullName: u.fullName || "",
+        email: u.email || "",
         role: u.role,
         children: buildTree(String(u._id))
       }))
       console.log("🌳 Admin topLevel:", topLevel.length)
       return res.json({
         success: true,
-        tree: [{ id: adminId || "admin", name: adminUser?.name || "Admin", role: "admin", children: topLevel }]
+        tree: [{ id: adminId || "admin", name: adminUser?.name || "Admin", fullName: adminUser?.fullName || "Administrator", role: "admin", children: topLevel }]
       })
     }
 
@@ -165,6 +169,8 @@ router.get("/tree", auth, async (req, res) => {
         {
           id: String(me._id),
           name: me.name,
+          fullName: me.fullName || "",
+          email: me.email || "",
           role: me.role,
           children: buildTree(String(me._id))
         }
