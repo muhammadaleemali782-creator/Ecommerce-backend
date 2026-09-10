@@ -29,8 +29,9 @@ const rewardClaimSchema = new mongoose.Schema(
       enum: [
         "userWalletAsSeller",     // Seller ka User Wallet
         "sellerWalletAsSeller",   // Seller ka Seller Wallet
+        "sellerUnified",          // Seller ka Unified Wallet
         "distSellerWallet",       // Distributor ka Direct-Seller Wallet (dist.sellerWallet)
-        "distributorWallet"      // Distributor ka main level (dist.distributorWallet)
+        "distributorWallet"       // Distributor ka main level (dist.distributorWallet)
       ],
       required: true
     },
@@ -38,8 +39,7 @@ const rewardClaimSchema = new mongoose.Schema(
     level: {
       type: Number,
       required: true,
-      min: 1,
-      max: 4
+      min: 1
     },
 
     // ⭐ Snapshot — us waqt ka naam/reward text (agar admin baad mein settings change kare to purana record na bigde)

@@ -27,6 +27,26 @@ const WALLET_CONFIG = {
     defaultNames: { level0: "Distributor", level1: "Senior Distributor", level2: "Gold Distributor", level3: "Platinum Distributor", level4: "Diamond Distributor" },
     defaultRewards: { level1: "🎁 ₹500 bonus credit", level2: "🎁 ₹1500 bonus credit", level3: "🎁 ₹3000 + free kit", level4: "🎁 ₹10000 + trip" },
   },
+  sellerWalletAsSeller: {
+    role: "seller",
+    ppcField: null, // Dynamic: (user.userWalletAsSeller || 0) + (user.sellerWalletAsSeller || 0)
+    thresholdsKey: "sellerLevelUpThresholds",
+    namesKey: "sellerLevelNames",
+    rewardsKey: "sellerLevelRewards",
+    defaultThresholds: { level1: 50, level2: 200, level3: 500, level4: 2000 },
+    defaultNames: { level0: "Seller", level1: "Silver Seller", level2: "Gold Seller", level3: "Platinum Seller", level4: "Diamond Seller" },
+    defaultRewards: { level1: "🎁 ₹250 bonus credit", level2: "🎁 ₹750 bonus credit", level3: "🎁 ₹1500 + free kit", level4: "🎁 ₹5000 + trip" },
+  },
+  sellerUnified: {
+    role: "seller",
+    ppcField: null,
+    thresholdsKey: "sellerLevelUpThresholds",
+    namesKey: "sellerLevelNames",
+    rewardsKey: "sellerLevelRewards",
+    defaultThresholds: { level1: 50, level2: 200, level3: 500, level4: 2000 },
+    defaultNames: { level0: "Seller", level1: "Silver Seller", level2: "Gold Seller", level3: "Platinum Seller", level4: "Diamond Seller" },
+    defaultRewards: { level1: "🎁 ₹250 bonus credit", level2: "🎁 ₹750 bonus credit", level3: "🎁 ₹1500 + free kit", level4: "🎁 ₹5000 + trip" },
+  },
 }
 
 const getWalletsForRole = (role) =>
@@ -56,11 +76,21 @@ router.get("/my", protect, allowRoles("seller", "distributor"), async (req, res)
         ? (user.userWalletAsSeller || 0) + (user.sellerWalletAsSeller || 0)
         : (user[cfg.ppcField] || 0)
 
-      const levels = [1, 2, 3, 4].map((level) => {
+      const levelNumbers = Object.keys(thresholds)
+        .map((k) => parseInt(k.replace("level", "")))
+        .filter((n) => !isNaN(n) && n > 0)
+        .sort((a, b) => a - b)
+
+      const levelsToIterate = levelNumbers.length > 0 ? levelNumbers : [1, 2, 3, 4]
+
+      const levels = levelsToIterate.map((level) => {
         const threshold = thresholds[`level${level}`] || 0
         const achieved = currentPPC >= threshold
         const claim = existingClaims.find(
-          (c) => c.walletType === walletType && c.level === level
+          (c) =>
+            (c.walletType === walletType ||
+              (walletType.startsWith("seller") && c.walletType.startsWith("seller"))) &&
+            c.level === level
         )
 
         return {
@@ -100,7 +130,7 @@ router.post("/claim", protect, allowRoles("seller", "distributor"), async (req, 
     if (cfg.role !== req.user.role) {
       return res.status(403).json({ message: "Ye wallet aapke role ke liye nahi hai" })
     }
-    if (![1, 2, 3, 4].includes(lvl)) {
+    if (!lvl || lvl < 1) {
       return res.status(400).json({ message: "Invalid level" })
     }
 
@@ -112,7 +142,11 @@ router.post("/claim", protect, allowRoles("seller", "distributor"), async (req, 
     const names = settings[cfg.namesKey] || cfg.defaultNames
     const rewards = settings[cfg.rewardsKey] || cfg.defaultRewards
 
-    const threshold = thresholds[`level${lvl}`] || 0
+    const threshold = thresholds[`level${lvl}`]
+    if (threshold === undefined || threshold === null) {
+      return res.status(400).json({ message: `Level ${lvl} is not defined in settings` })
+    }
+
     const currentPPC = user.role === "seller"
       ? (user.userWalletAsSeller || 0) + (user.sellerWalletAsSeller || 0)
       : (user[cfg.ppcField] || 0)

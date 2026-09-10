@@ -65,110 +65,116 @@ router.post("/update", auth, allowRoles("admin"), async (req, res) => {
 
     if (minimumWithdrawal !== undefined) settings.minimumWithdrawal = Number(minimumWithdrawal)
 
-    // ✅ Level up thresholds
-    if (levelUpThresholds) {
-      if (!settings.levelUpThresholds) settings.levelUpThresholds = {}
-      if (levelUpThresholds.level1 !== undefined) settings.levelUpThresholds.level1 = Number(levelUpThresholds.level1)
-      if (levelUpThresholds.level2 !== undefined) settings.levelUpThresholds.level2 = Number(levelUpThresholds.level2)
-      if (levelUpThresholds.level3 !== undefined) settings.levelUpThresholds.level3 = Number(levelUpThresholds.level3)
-      if (levelUpThresholds.level4 !== undefined) settings.levelUpThresholds.level4 = Number(levelUpThresholds.level4)
+    // ✅ Dynamic Distributor Level Thresholds
+    if (levelUpThresholds && typeof levelUpThresholds === "object") {
+      const sanitized = {}
+      for (const [k, v] of Object.entries(levelUpThresholds)) {
+        if (v !== undefined && v !== null && v !== "") sanitized[k] = Number(v)
+      }
+      settings.levelUpThresholds = sanitized
+      settings.markModified("levelUpThresholds")
     }
 
-    // ✅ Level names
-    if (levelNames) {
-      if (!settings.levelNames) settings.levelNames = {}
-      if (levelNames.level0 !== undefined) settings.levelNames.level0 = levelNames.level0
-      if (levelNames.level1 !== undefined) settings.levelNames.level1 = levelNames.level1
-      if (levelNames.level2 !== undefined) settings.levelNames.level2 = levelNames.level2
-      if (levelNames.level3 !== undefined) settings.levelNames.level3 = levelNames.level3
-      if (levelNames.level4 !== undefined) settings.levelNames.level4 = levelNames.level4
+    // ✅ Dynamic Distributor Level Names
+    if (levelNames && typeof levelNames === "object") {
+      const sanitized = {}
+      for (const [k, v] of Object.entries(levelNames)) {
+        if (v !== undefined && v !== null) sanitized[k] = String(v)
+      }
+      settings.levelNames = sanitized
+      settings.markModified("levelNames")
     }
 
-    // ✅ Level rewards — admin control
-    if (levelRewards) {
-      if (!settings.levelRewards) settings.levelRewards = {}
-      if (levelRewards.level1 !== undefined) settings.levelRewards.level1 = levelRewards.level1
-      if (levelRewards.level2 !== undefined) settings.levelRewards.level2 = levelRewards.level2
-      if (levelRewards.level3 !== undefined) settings.levelRewards.level3 = levelRewards.level3
-      if (levelRewards.level4 !== undefined) settings.levelRewards.level4 = levelRewards.level4
+    // ✅ Dynamic Distributor Level Rewards
+    if (levelRewards && typeof levelRewards === "object") {
+      const sanitized = {}
+      for (const [k, v] of Object.entries(levelRewards)) {
+        if (v !== undefined && v !== null) sanitized[k] = String(v)
+      }
+      settings.levelRewards = sanitized
+      settings.markModified("levelRewards")
     }
 
-    // ✅ Seller Level Up Thresholds
-    if (sellerLevelUpThresholds) {
-      if (!settings.sellerLevelUpThresholds) settings.sellerLevelUpThresholds = {}
-      if (sellerLevelUpThresholds.level1 !== undefined) settings.sellerLevelUpThresholds.level1 = Number(sellerLevelUpThresholds.level1)
-      if (sellerLevelUpThresholds.level2 !== undefined) settings.sellerLevelUpThresholds.level2 = Number(sellerLevelUpThresholds.level2)
-      if (sellerLevelUpThresholds.level3 !== undefined) settings.sellerLevelUpThresholds.level3 = Number(sellerLevelUpThresholds.level3)
-      if (sellerLevelUpThresholds.level4 !== undefined) settings.sellerLevelUpThresholds.level4 = Number(sellerLevelUpThresholds.level4)
-    }
-    // ✅ Seller Level Names
-    if (sellerLevelNames) {
-      if (!settings.sellerLevelNames) settings.sellerLevelNames = {}
-      if (sellerLevelNames.level0 !== undefined) settings.sellerLevelNames.level0 = sellerLevelNames.level0
-      if (sellerLevelNames.level1 !== undefined) settings.sellerLevelNames.level1 = sellerLevelNames.level1
-      if (sellerLevelNames.level2 !== undefined) settings.sellerLevelNames.level2 = sellerLevelNames.level2
-      if (sellerLevelNames.level3 !== undefined) settings.sellerLevelNames.level3 = sellerLevelNames.level3
-      if (sellerLevelNames.level4 !== undefined) settings.sellerLevelNames.level4 = sellerLevelNames.level4
-    }
-    // ✅ Seller Level Rewards
-    if (sellerLevelRewards) {
-      if (!settings.sellerLevelRewards) settings.sellerLevelRewards = {}
-      if (sellerLevelRewards.level1 !== undefined) settings.sellerLevelRewards.level1 = sellerLevelRewards.level1
-      if (sellerLevelRewards.level2 !== undefined) settings.sellerLevelRewards.level2 = sellerLevelRewards.level2
-      if (sellerLevelRewards.level3 !== undefined) settings.sellerLevelRewards.level3 = sellerLevelRewards.level3
-      if (sellerLevelRewards.level4 !== undefined) settings.sellerLevelRewards.level4 = sellerLevelRewards.level4
+    // ✅ Dynamic Seller Level Thresholds
+    if (sellerLevelUpThresholds && typeof sellerLevelUpThresholds === "object") {
+      const sanitized = {}
+      for (const [k, v] of Object.entries(sellerLevelUpThresholds)) {
+        if (v !== undefined && v !== null && v !== "") sanitized[k] = Number(v)
+      }
+      settings.sellerLevelUpThresholds = sanitized
+      settings.markModified("sellerLevelUpThresholds")
     }
 
-    // ✅ User Wallet Level Up Thresholds (separate from Direct Seller Wallet)
-    if (userWalletLevelUpThresholds) {
-      if (!settings.userWalletLevelUpThresholds) settings.userWalletLevelUpThresholds = {}
-      if (userWalletLevelUpThresholds.level1 !== undefined) settings.userWalletLevelUpThresholds.level1 = Number(userWalletLevelUpThresholds.level1)
-      if (userWalletLevelUpThresholds.level2 !== undefined) settings.userWalletLevelUpThresholds.level2 = Number(userWalletLevelUpThresholds.level2)
-      if (userWalletLevelUpThresholds.level3 !== undefined) settings.userWalletLevelUpThresholds.level3 = Number(userWalletLevelUpThresholds.level3)
-      if (userWalletLevelUpThresholds.level4 !== undefined) settings.userWalletLevelUpThresholds.level4 = Number(userWalletLevelUpThresholds.level4)
-    }
-    // ✅ User Wallet Level Names
-    if (userWalletLevelNames) {
-      if (!settings.userWalletLevelNames) settings.userWalletLevelNames = {}
-      if (userWalletLevelNames.level0 !== undefined) settings.userWalletLevelNames.level0 = userWalletLevelNames.level0
-      if (userWalletLevelNames.level1 !== undefined) settings.userWalletLevelNames.level1 = userWalletLevelNames.level1
-      if (userWalletLevelNames.level2 !== undefined) settings.userWalletLevelNames.level2 = userWalletLevelNames.level2
-      if (userWalletLevelNames.level3 !== undefined) settings.userWalletLevelNames.level3 = userWalletLevelNames.level3
-      if (userWalletLevelNames.level4 !== undefined) settings.userWalletLevelNames.level4 = userWalletLevelNames.level4
-    }
-    // ✅ User Wallet Level Rewards
-    if (userWalletLevelRewards) {
-      if (!settings.userWalletLevelRewards) settings.userWalletLevelRewards = {}
-      if (userWalletLevelRewards.level1 !== undefined) settings.userWalletLevelRewards.level1 = userWalletLevelRewards.level1
-      if (userWalletLevelRewards.level2 !== undefined) settings.userWalletLevelRewards.level2 = userWalletLevelRewards.level2
-      if (userWalletLevelRewards.level3 !== undefined) settings.userWalletLevelRewards.level3 = userWalletLevelRewards.level3
-      if (userWalletLevelRewards.level4 !== undefined) settings.userWalletLevelRewards.level4 = userWalletLevelRewards.level4
+    // ✅ Dynamic Seller Level Names
+    if (sellerLevelNames && typeof sellerLevelNames === "object") {
+      const sanitized = {}
+      for (const [k, v] of Object.entries(sellerLevelNames)) {
+        if (v !== undefined && v !== null) sanitized[k] = String(v)
+      }
+      settings.sellerLevelNames = sanitized
+      settings.markModified("sellerLevelNames")
     }
 
-    // ✅ Distributor's OWN Direct Seller Wallet — Level Up Thresholds
-    if (distSellerLevelUpThresholds) {
-      if (!settings.distSellerLevelUpThresholds) settings.distSellerLevelUpThresholds = {}
-      if (distSellerLevelUpThresholds.level1 !== undefined) settings.distSellerLevelUpThresholds.level1 = Number(distSellerLevelUpThresholds.level1)
-      if (distSellerLevelUpThresholds.level2 !== undefined) settings.distSellerLevelUpThresholds.level2 = Number(distSellerLevelUpThresholds.level2)
-      if (distSellerLevelUpThresholds.level3 !== undefined) settings.distSellerLevelUpThresholds.level3 = Number(distSellerLevelUpThresholds.level3)
-      if (distSellerLevelUpThresholds.level4 !== undefined) settings.distSellerLevelUpThresholds.level4 = Number(distSellerLevelUpThresholds.level4)
+    // ✅ Dynamic Seller Level Rewards
+    if (sellerLevelRewards && typeof sellerLevelRewards === "object") {
+      const sanitized = {}
+      for (const [k, v] of Object.entries(sellerLevelRewards)) {
+        if (v !== undefined && v !== null) sanitized[k] = String(v)
+      }
+      settings.sellerLevelRewards = sanitized
+      settings.markModified("sellerLevelRewards")
     }
-    // ✅ Distributor's Direct Seller Wallet — Level Names
-    if (distSellerLevelNames) {
-      if (!settings.distSellerLevelNames) settings.distSellerLevelNames = {}
-      if (distSellerLevelNames.level0 !== undefined) settings.distSellerLevelNames.level0 = distSellerLevelNames.level0
-      if (distSellerLevelNames.level1 !== undefined) settings.distSellerLevelNames.level1 = distSellerLevelNames.level1
-      if (distSellerLevelNames.level2 !== undefined) settings.distSellerLevelNames.level2 = distSellerLevelNames.level2
-      if (distSellerLevelNames.level3 !== undefined) settings.distSellerLevelNames.level3 = distSellerLevelNames.level3
-      if (distSellerLevelNames.level4 !== undefined) settings.distSellerLevelNames.level4 = distSellerLevelNames.level4
+
+    // ✅ User Wallet Level Settings (if passed)
+    if (userWalletLevelUpThresholds && typeof userWalletLevelUpThresholds === "object") {
+      const sanitized = {}
+      for (const [k, v] of Object.entries(userWalletLevelUpThresholds)) {
+        if (v !== undefined && v !== null && v !== "") sanitized[k] = Number(v)
+      }
+      settings.userWalletLevelUpThresholds = sanitized
+      settings.markModified("userWalletLevelUpThresholds")
     }
-    // ✅ Distributor's Direct Seller Wallet — Level Rewards
-    if (distSellerLevelRewards) {
-      if (!settings.distSellerLevelRewards) settings.distSellerLevelRewards = {}
-      if (distSellerLevelRewards.level1 !== undefined) settings.distSellerLevelRewards.level1 = distSellerLevelRewards.level1
-      if (distSellerLevelRewards.level2 !== undefined) settings.distSellerLevelRewards.level2 = distSellerLevelRewards.level2
-      if (distSellerLevelRewards.level3 !== undefined) settings.distSellerLevelRewards.level3 = distSellerLevelRewards.level3
-      if (distSellerLevelRewards.level4 !== undefined) settings.distSellerLevelRewards.level4 = distSellerLevelRewards.level4
+    if (userWalletLevelNames && typeof userWalletLevelNames === "object") {
+      const sanitized = {}
+      for (const [k, v] of Object.entries(userWalletLevelNames)) {
+        if (v !== undefined && v !== null) sanitized[k] = String(v)
+      }
+      settings.userWalletLevelNames = sanitized
+      settings.markModified("userWalletLevelNames")
+    }
+    if (userWalletLevelRewards && typeof userWalletLevelRewards === "object") {
+      const sanitized = {}
+      for (const [k, v] of Object.entries(userWalletLevelRewards)) {
+        if (v !== undefined && v !== null) sanitized[k] = String(v)
+      }
+      settings.userWalletLevelRewards = sanitized
+      settings.markModified("userWalletLevelRewards")
+    }
+
+    // ✅ Dist Seller Level Settings (if passed)
+    if (distSellerLevelUpThresholds && typeof distSellerLevelUpThresholds === "object") {
+      const sanitized = {}
+      for (const [k, v] of Object.entries(distSellerLevelUpThresholds)) {
+        if (v !== undefined && v !== null && v !== "") sanitized[k] = Number(v)
+      }
+      settings.distSellerLevelUpThresholds = sanitized
+      settings.markModified("distSellerLevelUpThresholds")
+    }
+    if (distSellerLevelNames && typeof distSellerLevelNames === "object") {
+      const sanitized = {}
+      for (const [k, v] of Object.entries(distSellerLevelNames)) {
+        if (v !== undefined && v !== null) sanitized[k] = String(v)
+      }
+      settings.distSellerLevelNames = sanitized
+      settings.markModified("distSellerLevelNames")
+    }
+    if (distSellerLevelRewards && typeof distSellerLevelRewards === "object") {
+      const sanitized = {}
+      for (const [k, v] of Object.entries(distSellerLevelRewards)) {
+        if (v !== undefined && v !== null) sanitized[k] = String(v)
+      }
+      settings.distSellerLevelRewards = sanitized
+      settings.markModified("distSellerLevelRewards")
     }
 
     settings.markModified("levelUpThresholds")

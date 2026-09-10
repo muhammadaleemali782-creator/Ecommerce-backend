@@ -55,52 +55,70 @@ const ppcSettingsSchema = new mongoose.Schema(
       min: 0
     },
 
-    // ✅ Level Up Thresholds for Distributors
+    // ✅ Level Up Thresholds for Distributors (Dynamic)
     levelUpThresholds: {
-      level1: { type: Number, default: 100,  description: "Distributor → Senior Distributor" },
-      level2: { type: Number, default: 500,  description: "Senior → Gold Distributor" },
-      level3: { type: Number, default: 1000, description: "Gold → Platinum Distributor" },
-      level4: { type: Number, default: 5000, description: "Platinum → Diamond Distributor" },
+      type: mongoose.Schema.Types.Mixed,
+      default: {
+        level1: 100,
+        level2: 500,
+        level3: 1000,
+        level4: 5000
+      }
     },
 
-    // ✅ Level Up Rewards — admin sets reward for achieving each level
+    // ✅ Level Up Rewards (Dynamic)
     levelRewards: {
-      level1: { type: String, default: "🎁 ₹500 bonus credit"  },
-      level2: { type: String, default: "🎁 ₹1500 bonus credit" },
-      level3: { type: String, default: "🎁 ₹3000 + free kit"   },
-      level4: { type: String, default: "🎁 ₹10000 + trip"      },
+      type: mongoose.Schema.Types.Mixed,
+      default: {
+        level1: "🎁 ₹500 bonus credit",
+        level2: "🎁 ₹1500 bonus credit",
+        level3: "🎁 ₹3000 + free kit",
+        level4: "🎁 ₹10000 + trip"
+      }
     },
 
-    // ✅ Level names
+    // ✅ Level names (Dynamic)
     levelNames: {
-      level0: { type: String, default: "Distributor" },
-      level1: { type: String, default: "Senior Distributor" },
-      level2: { type: String, default: "Gold Distributor" },
-      level3: { type: String, default: "Platinum Distributor" },
-      level4: { type: String, default: "Diamond Distributor" },
+      type: mongoose.Schema.Types.Mixed,
+      default: {
+        level0: "Distributor",
+        level1: "Senior Distributor",
+        level2: "Gold Distributor",
+        level3: "Platinum Distributor",
+        level4: "Diamond Distributor"
+      }
     },
     
-    // ✅ Seller Level Up Thresholds
+    // ✅ Seller Level Up Thresholds (Dynamic)
     sellerLevelUpThresholds: {
-      level1: { type: Number, default: 50  },
-      level2: { type: Number, default: 200 },
-      level3: { type: Number, default: 500 },
-      level4: { type: Number, default: 2000 },
+      type: mongoose.Schema.Types.Mixed,
+      default: {
+        level1: 50,
+        level2: 200,
+        level3: 500,
+        level4: 2000
+      }
     },
-    // ✅ Seller Level Rewards
+    // ✅ Seller Level Rewards (Dynamic)
     sellerLevelRewards: {
-      level1: { type: String, default: "🎁 ₹250 bonus credit"  },
-      level2: { type: String, default: "🎁 ₹750 bonus credit"  },
-      level3: { type: String, default: "🎁 ₹1500 + free kit"   },
-      level4: { type: String, default: "🎁 ₹5000 + trip"       },
+      type: mongoose.Schema.Types.Mixed,
+      default: {
+        level1: "🎁 ₹250 bonus credit",
+        level2: "🎁 ₹750 bonus credit",
+        level3: "🎁 ₹1500 + free kit",
+        level4: "🎁 ₹5000 + trip"
+      }
     },
-    // ✅ Seller Level Names
+    // ✅ Seller Level Names (Dynamic)
     sellerLevelNames: {
-      level0: { type: String, default: "Seller"          },
-      level1: { type: String, default: "Silver Seller"   },
-      level2: { type: String, default: "Gold Seller"     },
-      level3: { type: String, default: "Platinum Seller" },
-      level4: { type: String, default: "Diamond Seller"  },
+      type: mongoose.Schema.Types.Mixed,
+      default: {
+        level0: "Seller",
+        level1: "Silver Seller",
+        level2: "Gold Seller",
+        level3: "Platinum Seller",
+        level4: "Diamond Seller"
+      }
     },
 
     lastUpdatedBy: {

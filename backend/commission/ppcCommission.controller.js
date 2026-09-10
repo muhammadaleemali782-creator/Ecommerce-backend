@@ -80,11 +80,15 @@ const saveCommission = async ({
 }
 
 /* ── Level helper: PPC total se current level nikalo ── */
-const calcLevel = (ppcTotal, thresholds) => {
-  if (ppcTotal >= (thresholds.level4 || Infinity)) return 4
-  if (ppcTotal >= (thresholds.level3 || Infinity)) return 3
-  if (ppcTotal >= (thresholds.level2 || Infinity)) return 2
-  if (ppcTotal >= (thresholds.level1 || Infinity)) return 1
+const calcLevel = (ppcTotal, thresholds = {}) => {
+  if (!thresholds || typeof thresholds !== "object") return 0
+  const sorted = Object.entries(thresholds)
+    .map(([k, v]) => ({ n: parseInt(k.replace("level", "")), v: Number(v) }))
+    .filter(item => !isNaN(item.n) && !isNaN(item.v))
+    .sort((a, b) => b.n - a.n) // highest level first
+  for (const { n, v } of sorted) {
+    if (ppcTotal >= v) return n
+  }
   return 0
 }
 
@@ -628,17 +632,22 @@ export const getMyPPCWallet = async (req, res) => {
       }
       const distPPC = user.distributorWallet || 0
 
-      // Determine current level
-      let currentLevel = 0
-      if (distPPC >= (thresholds.level4 || 5000))      currentLevel = 4
-      else if (distPPC >= (thresholds.level3 || 1000)) currentLevel = 3
-      else if (distPPC >= (thresholds.level2 || 500))  currentLevel = 2
-      else if (distPPC >= (thresholds.level1 || 100))  currentLevel = 1
+      // Dynamic levels sorting
+      const sortedLevels = Object.entries(thresholds)
+        .map(([k, v]) => ({ n: parseInt(k.replace("level", "")), v: Number(v) }))
+        .filter(l => !isNaN(l.n) && !isNaN(l.v))
+        .sort((a, b) => a.n - b.n)
 
-      const nextLevel     = currentLevel < 4 ? currentLevel + 1 : null
-      const nextThreshold = nextLevel ? (thresholds[`level${nextLevel}`] || 0) : null
+      let currentLevel = 0
+      sortedLevels.forEach(({ n, v }) => {
+        if (distPPC >= v) currentLevel = n
+      })
+
+      const nextLvl = sortedLevels.find(l => l.n > currentLevel)
+      const nextLevel = nextLvl ? nextLvl.n : null
+      const nextThreshold = nextLvl ? nextLvl.v : null
       const prevThreshold = currentLevel > 0 ? (thresholds[`level${currentLevel}`] || 0) : 0
-      const progress      = nextThreshold
+      const progress = nextThreshold
         ? Math.min(100, Math.round(((distPPC - prevThreshold) / (nextThreshold - prevThreshold)) * 100))
         : 100
 
@@ -651,7 +660,7 @@ export const getMyPPCWallet = async (req, res) => {
           // ✅ Level info
           currentLevel,
           currentLevelName: levelNames[`level${currentLevel}`] || "Distributor",
-          nextLevelName:    nextLevel ? (levelNames[`level${nextLevel}`] || "") : null,
+          nextLevelName:    nextLevel ? (levelNames[`level${nextLevel}`] || `Level ${nextLevel}`) : null,
           nextThreshold,
           prevThreshold,
           progress,
@@ -703,7 +712,58 @@ export const getMyPPCWallet = async (req, res) => {
           note:           "Neeche wale seller ki sales se mila (25% share)"
         },
       }
-      response.totalSellerPPC = (user.userWalletAsSeller || 0) + (user.sellerWalletAsSeller || 0)
+
+      // ⭐ Unified Seller Reward Roadmap (User Wallet + Direct Seller Wallet combined)
+      const totalSellerPPC = (user.userWalletAsSeller || 0) + (user.sellerWalletAsSeller || 0)
+      response.totalSellerPPC = totalSellerPPC
+
+      const thresholds   = settings.sellerLevelUpThresholds || { level1:50, level2:200, level3:500, level4:2000 }
+      const levelNames   = settings.sellerLevelNames || {
+        level0:"Seller", level1:"Silver Seller", level2:"Gold Seller",
+        level3:"Platinum Seller", level4:"Diamond Seller"
+      }
+      const levelRewards = settings.sellerLevelRewards || {
+        level1: "🎁 ₹250 bonus credit",
+        level2: "🎁 ₹750 bonus credit",
+        level3: "🎁 ₹1500 + free kit",
+        level4: "🎁 ₹5000 + trip"
+      }
+
+      const sortedLevels = Object.entries(thresholds)
+        .map(([k, v]) => ({ n: parseInt(k.replace("level", "")), v: Number(v) }))
+        .filter(l => !isNaN(l.n) && !isNaN(l.v))
+        .sort((a, b) => a.n - b.n)
+
+      let currentLevel = 0
+      sortedLevels.forEach(({ n, v }) => {
+        if (totalSellerPPC >= v) currentLevel = n
+      })
+
+      const nextLvl = sortedLevels.find(l => l.n > currentLevel)
+      const nextLevel = nextLvl ? nextLvl.n : null
+      const nextThreshold = nextLvl ? nextLvl.v : null
+      const prevThreshold = currentLevel > 0 ? (thresholds[`level${currentLevel}`] || 0) : 0
+      const progress = nextThreshold
+        ? Math.min(100, Math.round(((totalSellerPPC - prevThreshold) / (nextThreshold - prevThreshold)) * 100))
+        : 100
+
+      response.unifiedSellerReward = {
+        totalPPC: totalSellerPPC,
+        currentLevel,
+        currentLevelName: levelNames[`level${currentLevel}`] || "Direct Seller",
+        nextLevelName: nextLevel ? (levelNames[`level${nextLevel}`] || `Level ${nextLevel}`) : null,
+        nextThreshold,
+        prevThreshold,
+        progress,
+        thresholds,
+        levelNames,
+        levelRewards
+      }
+
+      // ✅ Seller's Direct Seller Wallet level data
+      response.sellerLevelUpThresholds = thresholds
+      response.sellerLevelNames        = levelNames
+      response.sellerLevelRewards      = levelRewards
     }
 
     res.json(response)
