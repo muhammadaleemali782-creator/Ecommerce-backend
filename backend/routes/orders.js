@@ -183,6 +183,7 @@ router.put("/dist-approve/:id", protect, allowRoles("distributor"), async (req, 
     order.distributorApprovedAt = new Date()
     order.distributorNote      = note.trim()
     order.distributorNoteVisible = noteVisible   // ⭐ seller ko dikhana hai ya nahi
+    order.adminBypassedDistributor = false
     await order.save()
 
     // ⚠️ NOTE: PPC/Sales trigger NAHI hoga — sirf admin final confirm pe hoga
@@ -231,10 +232,12 @@ router.put("/admin-approve/:id", protect, allowRoles("admin"), async (req, res) 
     order.adminNoteVisible = noteVisible    // ⭐ seller ko dikhana hai ya nahi
     order.approvedByAdmin = true
 
-    // Agar distributor ne approve nahi kiya tha, to auto-mark
+    // Agar distributor ne pehle approve nahi kiya tha, to admin direct approve mark karo
     if (!order.distributorApproved) {
-      order.distributorApproved   = true
-      order.distributorApprovedAt = new Date()
+      order.adminBypassedDistributor = true
+      // order.distributorApproved false hi rahega taki pata chale ki distributor ne approve nahi kiya tha
+    } else {
+      order.adminBypassedDistributor = false
     }
 
     await order.save()

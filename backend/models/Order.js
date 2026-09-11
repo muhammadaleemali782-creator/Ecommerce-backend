@@ -56,7 +56,8 @@ const orderSchema = new mongoose.Schema(
     adminNoteVisible: { type: Boolean, default: false },
 
     // Admin bypass flag (distributor ke bina bhi approve kar sakta hai)
-    approvedByAdmin:  { type: Boolean, default: false },
+    approvedByAdmin:          { type: Boolean, default: false },
+    adminBypassedDistributor: { type: Boolean, default: false },
 
     // ── TIMESTAMPS ──
     confirmedAt: { type: Date,                                       default: null },
