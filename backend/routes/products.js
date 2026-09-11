@@ -106,17 +106,20 @@ router.put(
   upload.single("image"),
   async (req, res) => {
     try {
-      const { title, price, ppcReward } = req.body
+      const { title, price, ppcReward, category, description, imageUrl } = req.body
       
       const product = await Product.findById(req.params.id)
       if (!product) {
         return res.status(404).json({ message: "Product not found" })
       }
       
-      if (title) product.title = title
-      if (price) product.price = Number(price)
-      if (ppcReward !== undefined) product.ppcReward = Number(ppcReward)  // ⭐ Update PPC
-      if (req.file) product.image = `/uploads/${req.file.filename}`
+      if (title !== undefined && String(title).trim() !== "") product.title = String(title).trim()
+      if (price !== undefined && price !== "") product.price = Number(price)
+      if (ppcReward !== undefined && ppcReward !== "") product.ppcReward = Number(ppcReward)
+      if (category !== undefined) product.category = String(category).trim()
+      if (description !== undefined) product.description = String(description).trim()
+      if (req.file) product.image = req.file.filename
+      else if (imageUrl !== undefined && String(imageUrl).trim() !== "") product.image = String(imageUrl).trim()
       
       await product.save()
       

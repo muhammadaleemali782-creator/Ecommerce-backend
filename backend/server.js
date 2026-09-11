@@ -1201,6 +1201,64 @@ app.post(
     }
   }
 )
+
+/* =====================================================
+   ADMIN UPDATE PRODUCT ⭐
+   PUT /admin/update-product/:id
+===================================================== */
+app.put(
+  "/admin/update-product/:id",
+  protect,
+  allowRoles("admin"),
+  upload.single("image"),
+  async (req, res) => {
+    try {
+      const productId = req.params.id
+      const { title, price, ppcReward, category, description, imageUrl } = req.body
+
+      const product = await Product.findById(productId)
+      if (!product) {
+        return res.status(404).json({ message: "Product not found" })
+      }
+
+      if (title !== undefined && String(title).trim() !== "") {
+        product.title = String(title).trim()
+      }
+      if (price !== undefined && price !== "") {
+        product.price = Number(price)
+      }
+      if (ppcReward !== undefined && ppcReward !== "") {
+        product.ppcReward = Number(ppcReward)
+      }
+      if (category !== undefined) {
+        product.category = String(category).trim()
+      }
+      if (description !== undefined) {
+        product.description = String(description).trim()
+      }
+
+      if (req.file) {
+        product.image = req.file.filename
+      } else if (imageUrl !== undefined && String(imageUrl).trim() !== "") {
+        product.image = String(imageUrl).trim()
+      }
+
+      await product.save()
+
+      console.log("✅ PRODUCT UPDATED:", product.title, `(₹${product.price})`)
+
+      return res.json({
+        success: true,
+        message: "Product updated successfully",
+        product
+      })
+    } catch (err) {
+      console.error("❌ Update product error:", err)
+      return res.status(500).json({ message: err.message || "Failed to update product" })
+    }
+  }
+)
+
 /* =====================================================
    ADMIN DELETE PRODUCT EVERYWHERE
 ===================================================== */
