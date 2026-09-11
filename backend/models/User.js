@@ -464,7 +464,13 @@ userSchema.methods.safeUser = function () {
 userSchema.index({ role: 1, parentId: 1 })
 userSchema.index({ isBlocked: 1, isDeleted: 1 })
 userSchema.index({ email: 1 })
-userSchema.index({ idNumber: 1 }, { unique: true, sparse: true })
+userSchema.index(
+  { idNumber: 1, role: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { idNumber: { $type: "string" } }
+  }
+)
 userSchema.index({ mustChangePassword: 1 })
 
 /*

@@ -29,6 +29,20 @@ mongoose
     } catch (e) {
       // Collection exist nahi karta ya pehle se theek hai — ignore
     }
+
+    /* ⭐ FIX: Drop legacy single-field unique index 'idNumber_1' on users collection
+       so compound unique index (idNumber + role) can take effect without role conflict */
+    try {
+      const usersColl = mongoose.connection.collection("users")
+      const indexes = await usersColl.indexes()
+      const hasOldIdNumberIndex = indexes.some(idx => idx.name === "idNumber_1")
+      if (hasOldIdNumberIndex) {
+        await usersColl.dropIndex("idNumber_1")
+        console.log("✅ Legacy index 'idNumber_1' dropped from users collection")
+      }
+    } catch (e) {
+      // Index nahi mila ya pehle se dropped hai — ignore
+    }
   })
   .catch(err => console.error("❌ MongoDB error:", err.message))
 
@@ -716,16 +730,17 @@ app.post("/requests/create", protect, async (req, res) => {
     }
     const cleanIdNumber = idCheck.value
 
-    // ⭐ Already kisi User ke paas ye ID hai?
-    const idInUse = await User.findOne({ idNumber: cleanIdNumber })
+    // ⭐ Already is role ke User ke paas ye ID hai?
+    // Rule: Ek hi Aadhar/PAN se alag alag roles (e.g. seller + distributor + user) ban sakte hain, par same role ka duplicate nahi ban sakta.
+    const idInUse = await User.findOne({ idNumber: cleanIdNumber, role: type, isDeleted: { $ne: true } })
     if (idInUse) {
-      return res.status(409).json({ message: "Ye Aadhar/PAN number already kisi account se linked hai" })
+      return res.status(409).json({ message: `Is ${idType.toUpperCase()} number se pehle se ek ${type} account registered hai` })
     }
 
-    // ⭐ Kisi pending request mein bhi to nahi use ho raha?
-    const idInPendingRequest = await UserRequest.findOne({ idNumber: cleanIdNumber, status: "pending" })
+    // ⭐ Kisi pending request mein bhi to nahi use ho raha issi role ke liye?
+    const idInPendingRequest = await UserRequest.findOne({ idNumber: cleanIdNumber, type, status: "pending" })
     if (idInPendingRequest) {
-      return res.status(409).json({ message: "Ye Aadhar/PAN number ki request pehle se pending hai" })
+      return res.status(409).json({ message: `Is ${idType.toUpperCase()} number se ${type} ke liye request pehle se pending hai` })
     }
 
     /* ── Role-based type validation ── */
@@ -904,14 +919,15 @@ app.post("/requests/public-create", async (req, res) => {
     }
     const cleanIdNumber = idCheck.value
 
-    const idInUse = await User.findOne({ idNumber: cleanIdNumber })
+    // ⭐ Same Aadhar/PAN se alag alag roles allow hain, par same role ka duplicate nahi
+    const idInUse = await User.findOne({ idNumber: cleanIdNumber, role: type, isDeleted: { $ne: true } })
     if (idInUse) {
-      return res.status(409).json({ message: "Ye Aadhar/PAN number already kisi account se linked hai" })
+      return res.status(409).json({ message: `Is ${idType.toUpperCase()} number se pehle se ek ${type} account registered hai` })
     }
 
-    const idInPending = await UserRequest.findOne({ idNumber: cleanIdNumber, status: "pending" })
+    const idInPending = await UserRequest.findOne({ idNumber: cleanIdNumber, type, status: "pending" })
     if (idInPending) {
-      return res.status(409).json({ message: "Ye Aadhar/PAN number ki request pehle se pending hai" })
+      return res.status(409).json({ message: `Is ${idType.toUpperCase()} number se ${type} ke liye request pehle se pending hai` })
     }
 
     const request = await UserRequest.create({
@@ -2077,11 +2093,11 @@ app.post("/requests/approve/:id", protect, allowRoles("admin"), async (req, res)
     const exists = await User.findOne({ email: cleanEmail })
     if (exists) return res.status(409).json({ message: "User already exists" })
 
-    // ⭐ Safety re-check — approval ke waqt bhi Aadhar/PAN unique hona chahiye
+    // ⭐ Safety re-check — approval ke waqt bhi check karo ki iss role ke liye duplicate to nahi bana
     if (request.idNumber) {
-      const idTaken = await User.findOne({ idNumber: request.idNumber })
+      const idTaken = await User.findOne({ idNumber: request.idNumber, role: request.type, isDeleted: { $ne: true } })
       if (idTaken) {
-        return res.status(409).json({ message: "Ye Aadhar/PAN number already kisi aur account se linked ho chuka hai" })
+        return res.status(409).json({ message: `Is ${request.idType?.toUpperCase() || "ID"} se ${request.type} account pehle hi activate ho chuka hai` })
       }
     }
 
