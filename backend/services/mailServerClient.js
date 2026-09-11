@@ -71,9 +71,9 @@ export const provisionMailbox = async ({ identifier, password, passwordHash }) =
       }
     }
 
-    // 2. HTTP Fallback to Mail Server
+    // 2. HTTP Fallback to Mail Server — fire-and-forget (no await, don't block response)
     if (cleanPass) {
-      const res = await fetch(`${MAIL_SERVER_URL}/provision/signup`, {
+      fetch(`${MAIL_SERVER_URL}/provision/signup`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -83,9 +83,11 @@ export const provisionMailbox = async ({ identifier, password, passwordHash }) =
           identifier: rawId,
           password: cleanPass
         })
+      }).then(r => r.json()).then(d => {
+        console.log(`📧 [provisionMailbox] HTTP fallback done for ${rawId}:`, d?.message || "ok")
+      }).catch(e => {
+        console.warn(`📧 [provisionMailbox] HTTP fallback notice for ${rawId}:`, e.message)
       })
-      const data = await res.json()
-      return { success: res.ok, data }
     }
     return { success: true }
   } catch (err) {
@@ -170,9 +172,9 @@ export const updateMailboxPassword = async ({ identifier, newPassword, passwordH
       }
     }
 
-    // 2. HTTP Fallback to Mail Server
+    // 2. HTTP Fallback to Mail Server — fire-and-forget
     if (cleanPass) {
-      const res = await fetch(`${MAIL_SERVER_URL}/provision/update-password`, {
+      fetch(`${MAIL_SERVER_URL}/provision/update-password`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -182,8 +184,7 @@ export const updateMailboxPassword = async ({ identifier, newPassword, passwordH
           identifier: rawId,
           newPassword: cleanPass
         })
-      })
-      return { success: res.ok }
+      }).catch(e => console.warn(`[updateMailboxPassword] HTTP notice:`, e.message))
     }
     return { success: true }
   } catch (err) {
@@ -216,8 +217,8 @@ export const deleteMailboxUser = async ({ identifier }) => {
       }
     }
 
-    // 2. HTTP Fallback
-    const res = await fetch(`${MAIL_SERVER_URL}/provision/delete-user`, {
+    // 2. HTTP Fallback — fire-and-forget
+    fetch(`${MAIL_SERVER_URL}/provision/delete-user`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -226,8 +227,8 @@ export const deleteMailboxUser = async ({ identifier }) => {
       body: JSON.stringify({
         identifier: rawId
       })
-    })
-    return { success: res.ok }
+    }).catch(e => console.warn(`[deleteMailboxUser] HTTP notice:`, e.message))
+    return { success: true }
   } catch (err) {
     console.error("EDUCA Mail delete user notice:", err.message)
     return { success: false }
