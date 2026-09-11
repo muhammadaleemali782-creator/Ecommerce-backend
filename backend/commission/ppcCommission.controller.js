@@ -499,7 +499,7 @@ export const getMyPPCWallet = async (req, res) => {
 
     // ✅ FIFO: All commissions oldest first for withdrawal deduction
     const allCommissions = await Commission.find({ toUser: user._id })
-      .populate("fromUser", "name role")
+      .populate("fromUser", "name role fullName")
       .populate("toUser",   "name role")
       .populate("orderId",  "items total createdAt")
       .sort({ createdAt: 1 })   // oldest first → FIFO
@@ -587,27 +587,36 @@ export const getMyPPCWallet = async (req, res) => {
       totalWithdrawn: user.totalWithdrawn  || 0,
       currentPPCRate: rate,
       distributionRates: settings.distributionRates,
-      history: activeHistory.map(h => ({
-        ...h,
-        ppcCount:        h.ppcCount || 0,
-        remainingPPC:    h.remainingPPC,
-        rupeeValue:      h.rupeeValue || 0,
-        positionType:    h.positionType || "direct",
-        percentageShare: h.percentageShare || 50,
-        isUserOrder:     h.isUserOrder || h.chainInfo?.isUserOrder || (h.fromUser?.role === "user") || false,
-        toUserName:      h.toUser?.name || "",   // ✅ "You" ka actual naam
-        chainInfo: {
-          directSellerName: h.chainInfo?.directSellerName || "",
-          distributorName:  h.chainInfo?.distributorName  || "",
-          parentSellerName: h.chainInfo?.parentSellerName || "",
-          isUserOrder:      h.chainInfo?.isUserOrder      || false,
-        },
-        walletLabel: h.walletType === "userWallet"           ? "User Wallet (50%)"
-                   : h.walletType === "sellerWalletAsSeller" ? "Seller Wallet (25%)"
-                   : h.walletType === "sellerWallet"         ? "Distributor-Seller Wallet"
-                   : h.walletType,
-        earnedAt: h.createdAt,
-      }))
+      history: activeHistory.map(h => {
+        const isFromUser = h.isUserOrder || h.chainInfo?.isUserOrder || (h.fromUser?.role === "user")
+        const sourceRole = isFromUser ? "user" : "seller"
+        const sourceLabel = isFromUser ? "Direct User" : "Direct Seller"
+        return {
+          ...h,
+          ppcCount:        h.ppcCount || 0,
+          remainingPPC:    h.remainingPPC,
+          rupeeValue:      h.rupeeValue || 0,
+          positionType:    h.positionType || "direct",
+          sourceRole,
+          sourceLabel,
+          percentageShare: h.percentageShare || 50,
+          isUserOrder:     Boolean(isFromUser),
+          toUserName:      h.toUser?.name || "",   // ✅ "You" ka actual naam
+          fromUserName:    h.fromUser?.name || "",
+          fromUserFullName: h.fromUser?.fullName || "",
+          chainInfo: {
+            directSellerName: h.chainInfo?.directSellerName || "",
+            distributorName:  h.chainInfo?.distributorName  || "",
+            parentSellerName: h.chainInfo?.parentSellerName || "",
+            isUserOrder:      h.chainInfo?.isUserOrder      || false,
+          },
+          walletLabel: h.walletType === "userWallet"           ? "User Wallet (50%)"
+                     : h.walletType === "sellerWalletAsSeller" ? "Direct Seller Wallet (25%)"
+                     : h.walletType === "sellerWallet"         ? (user.role === "distributor" ? "Distributor Wallet (25%)" : "Direct Seller Wallet (25%)")
+                     : h.walletType,
+          earnedAt: h.createdAt,
+        }
+      })
     }
 
     /* ─── DISTRIBUTOR WALLETS ─── */
