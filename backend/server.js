@@ -2993,9 +2993,9 @@ app.post("/api/invoice-settings", protect, allowRoles("admin"), async (req, res)
 app.get("/api/invoice/:orderId", protect, async (req, res) => {
   try {
     const order = await Order.findById(req.params.orderId)
-      .populate("sellerId",      "name email role")
-      .populate("userId",        "name email role")
-      .populate("distributorId", "name email")
+      .populate("sellerId",      "name fullName email role phone")
+      .populate("userId",        "name fullName email role phone")
+      .populate("distributorId", "name fullName email phone")
       .lean()
     if (!order) return res.status(404).json({ message: "Order not found" })
     res.json(order)
