@@ -65,6 +65,14 @@ router.post("/update", auth, allowRoles("admin"), async (req, res) => {
 
     if (minimumWithdrawal !== undefined) settings.minimumWithdrawal = Number(minimumWithdrawal)
 
+    // ⭐ Monthly Lifetime Salary Payout Date (1 to 28)
+    if (req.body.salaryPayoutDay !== undefined) {
+      const day = parseInt(req.body.salaryPayoutDay)
+      if (day >= 1 && day <= 28) {
+        settings.salaryPayoutDay = day
+      }
+    }
+
     // ✅ Dynamic Distributor Level Thresholds
     if (levelUpThresholds && typeof levelUpThresholds === "object") {
       const sanitized = {}
@@ -356,6 +364,17 @@ router.get("/ledger/:userId", auth, allowRoles("admin"), async (req, res) => {
   } catch (err) {
     console.error("Admin user ledger error:", err)
     res.status(500).json({ success: false, message: "Failed to load user PPC ledger" })
+  }
+})
+
+// ⭐ Admin triggers monthly lifetime salary payout manually
+router.post("/run-salary-payout", auth, allowRoles("admin"), async (req, res) => {
+  try {
+    const { executeMonthlySalaryPayout } = await import("../services/salaryPayoutService.js")
+    const result = await executeMonthlySalaryPayout({ triggeredBy: "admin_manual" })
+    res.json(result)
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message })
   }
 })
 

@@ -6,6 +6,7 @@ dotenv.config()
 
 import mongoose from "mongoose"
 import { getFirebaseAdmin } from "./utils/firebaseAdmin.js"
+import { checkAndRunScheduledPayout } from "./services/salaryPayoutService.js"
 
 // 💚 Server start hote hi ek baar check kar lo Firebase sahi se juda hai ya nahi
 // (asli push bhejne ke time bhi ye hi function call hota hai — yahan sirf status
@@ -16,6 +17,14 @@ mongoose
   .connect(process.env.MONGO_URI, { autoIndex: true })
   .then(async () => {
     console.log("✅ MongoDB connected")
+
+    // 💼 Scheduled check for Monthly Lifetime Salary Payout
+    setTimeout(() => {
+      checkAndRunScheduledPayout().catch(e => console.warn("[SalaryPayout]", e.message))
+      setInterval(() => {
+        checkAndRunScheduledPayout().catch(e => console.warn("[SalaryPayout]", e.message))
+      }, 6 * 60 * 60 * 1000)
+    }, 15000)
     /* ⭐ FIX: UserRequest collection ka MongoDB-level validator clear karo
        Yeh tab zaruri hota hai jab enum change ho aur purana validator cached ho */
     try {

@@ -55,6 +55,18 @@ const ppcSettingsSchema = new mongoose.Schema(
       min: 0
     },
 
+    // ⭐ Monthly Lifetime Salary Payout Date (Admin can decide any day from 1 to 28)
+    salaryPayoutDay: {
+      type: Number,
+      default: 1,
+      min: 1,
+      max: 28
+    },
+    lastSalaryPayoutMonth: {
+      type: String,
+      default: ""
+    },
+
     // ✅ Level Up Thresholds for Distributors (Dynamic)
     levelUpThresholds: {
       type: mongoose.Schema.Types.Mixed,
