@@ -376,6 +376,9 @@ app.post("/login", async (req, res) => {
       user: {
         id: String(user._id),
         name: user.name,
+        fullName: user.fullName || "",
+        phone: user.phone || "",
+        address: user.address || "",
         email: user.email,
         role: user.role
       }
@@ -1282,7 +1285,7 @@ app.post(
   allowRoles("admin", "distributor", "seller"),
   async (req, res) => {
     try {
-      const { parentId, email, password, role, assignedProducts } = req.body
+      const { parentId, email, password, role, assignedProducts, fullName, name: inputName, phone, address } = req.body
 
       /* ── Role-based creation rules ── */
       if (req.user.role === "distributor") {
@@ -1331,8 +1334,15 @@ app.post(
 
       const hashed = await bcrypt.hash(password, 10)
 
+      const resolvedFullName = (fullName || inputName || "").trim()
+      const resolvedPhone = (phone || "").trim()
+      const resolvedAddress = (address || "").trim()
+
       const newUser = await User.create({
         name: autoName,
+        fullName: resolvedFullName,
+        phone: resolvedPhone,
+        address: resolvedAddress,
         email,
         password: hashed,
         role,
@@ -1359,6 +1369,10 @@ app.post(
         user: {
           id: String(newUser._id),
           name: newUser.name,
+          fullName: newUser.fullName,
+          phone: newUser.phone,
+          address: newUser.address,
+          email: newUser.email,
           role: newUser.role
         }
       })

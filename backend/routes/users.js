@@ -42,7 +42,7 @@ router.post(
     try {
       console.log("👤 Create seller by:", req.user?.id)
 
-      const { name, email, password } = req.body
+      const { name, email, password, fullName, phone, address } = req.body
 
       if (!name || !email || !password) {
         return res.status(400).json({
@@ -65,6 +65,9 @@ router.post(
 
       const seller = await User.create({
         name: name.trim(),
+        fullName: (fullName || name || "").trim(),
+        phone: (phone || "").trim(),
+        address: (address || "").trim(),
         email: cleanEmail,
         password: hash,
         role: "seller",
