@@ -2,7 +2,8 @@ import PPCSettings from "../models/PPCSettings.js"
 import RewardClaim from "../models/RewardClaim.js"
 import User from "../models/User.js"
 import SalaryPayout from "../models/SalaryPayout.js"
-import { sendNotification } from "../utils/notifHelper.js"
+import { createNotif } from "../utils/notifHelper.js"
+
 
 /**
  * Parses salary amount in Rupees from reward text
@@ -103,13 +104,16 @@ export async function executeMonthlySalaryPayout({ triggeredBy = "system_cron", 
 
       // 3. Send notification
       try {
-        await sendNotification({
-          userId: user._id,
-          title: "🎉 Lifetime Monthly Salary Credited!",
-          message: `Aapki ${claim.levelName || `Level ${claim.level}`} ki is mahine (${month}) ki ₹${salaryAmt.toLocaleString("en-IN")} lifetime salary aapke wallet me add kar di gayi hai.`,
-          type: "salary_credited",
-          targetPage: user.role === "distributor" ? "ppc-statement" : "seller-dashboard"
-        })
+        await createNotif(
+          user._id,
+          "general",
+          `🎉 Aapki ${claim.levelName || `Level ${claim.level}`} ki is mahine (${month}) ki ₹${salaryAmt.toLocaleString("en-IN")} lifetime salary aapke wallet me add kar di gayi hai.`,
+          {
+            senderName: "PPC System",
+            senderRole: "system",
+            targetPage: user.role === "distributor" ? "ppc-statement" : "seller-dashboard"
+          }
+        )
       } catch (ne) {
         console.warn("[SalaryPayout] Notification error:", ne.message)
       }
