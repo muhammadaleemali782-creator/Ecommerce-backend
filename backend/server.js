@@ -1155,7 +1155,7 @@ app.post(
       console.log("🔥 ADD PRODUCT BODY:", req.body)
       console.log("🔥 FILE:", req.file)
 
-     const { title, price, ppcReward, assignAllUsers, userIds, category, description } = req.body  // ⭐ category + description added
+      const { title, price, ppcReward, assignAllUsers, userIds, category, description, mrp, rating, reviews, discountBadge } = req.body
 
       if (!title || !price) {
         return res.status(400).json({ message: "Title & Price required" })
@@ -1164,6 +1164,10 @@ app.post(
       const newProduct = await Product.create({
         title: String(title).trim(),
         price: Number(price),
+        mrp: Number(mrp) || 0,
+        rating: rating !== undefined && rating !== "" ? Number(rating) : 4.9,
+        reviews: reviews !== undefined && reviews !== "" ? Number(reviews) : 85,
+        discountBadge: discountBadge ? String(discountBadge).trim() : "",
         ppcReward: Number(ppcReward) || 1,  // ⭐ NEW - Default 1 PPC
         category: category ? String(category).trim() : "",
         description: description ? String(description).trim() : "",  // ⭐ NEW - description ab save hoga
@@ -1239,7 +1243,7 @@ app.put(
   async (req, res) => {
     try {
       const productId = req.params.id
-      const { title, price, ppcReward, category, description, imageUrl } = req.body
+      const { title, price, ppcReward, category, description, imageUrl, mrp, rating, reviews, discountBadge } = req.body
 
       const product = await Product.findById(productId)
       if (!product) {
@@ -1251,6 +1255,18 @@ app.put(
       }
       if (price !== undefined && price !== "") {
         product.price = Number(price)
+      }
+      if (mrp !== undefined) {
+        product.mrp = Number(mrp) || 0
+      }
+      if (rating !== undefined && rating !== "") {
+        product.rating = Number(rating)
+      }
+      if (reviews !== undefined && reviews !== "") {
+        product.reviews = Number(reviews)
+      }
+      if (discountBadge !== undefined) {
+        product.discountBadge = String(discountBadge).trim()
       }
       if (ppcReward !== undefined && ppcReward !== "") {
         product.ppcReward = Number(ppcReward)

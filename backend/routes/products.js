@@ -30,7 +30,7 @@ router.post(
   upload.single("image"),
   async (req, res) => {
     try {
-      const { title, price, ppcReward, assignAllUsers } = req.body  // ⭐ ppcReward added
+      const { title, price, ppcReward, assignAllUsers, mrp, rating, reviews, discountBadge, category, description } = req.body
       
       if (!title || !price) {
         return res.status(400).json({ message: "Title and price required" })
@@ -40,6 +40,12 @@ router.post(
       const newProduct = await Product.create({
         title: title.trim(),
         price: Number(price),
+        mrp: Number(mrp) || 0,
+        rating: rating !== undefined && rating !== "" ? Number(rating) : 4.9,
+        reviews: reviews !== undefined && reviews !== "" ? Number(reviews) : 85,
+        discountBadge: discountBadge ? String(discountBadge).trim() : "",
+        category: category ? String(category).trim() : "",
+        description: description ? String(description).trim() : "",
         ppcReward: Number(ppcReward) || 1,  // ⭐ Default 1 PPC
         image: req.file ? `/uploads/${req.file.filename}` : "",
         distributorId: null,  // Admin product (visible to all)
@@ -106,7 +112,7 @@ router.put(
   upload.single("image"),
   async (req, res) => {
     try {
-      const { title, price, ppcReward, category, description, imageUrl } = req.body
+      const { title, price, ppcReward, category, description, imageUrl, mrp, rating, reviews, discountBadge } = req.body
       
       const product = await Product.findById(req.params.id)
       if (!product) {
@@ -115,6 +121,10 @@ router.put(
       
       if (title !== undefined && String(title).trim() !== "") product.title = String(title).trim()
       if (price !== undefined && price !== "") product.price = Number(price)
+      if (mrp !== undefined) product.mrp = Number(mrp) || 0
+      if (rating !== undefined && rating !== "") product.rating = Number(rating)
+      if (reviews !== undefined && reviews !== "") product.reviews = Number(reviews)
+      if (discountBadge !== undefined) product.discountBadge = String(discountBadge).trim()
       if (ppcReward !== undefined && ppcReward !== "") product.ppcReward = Number(ppcReward)
       if (category !== undefined) product.category = String(category).trim()
       if (description !== undefined) product.description = String(description).trim()

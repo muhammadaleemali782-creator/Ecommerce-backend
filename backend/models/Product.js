@@ -30,6 +30,32 @@ const productSchema = new mongoose.Schema(
       default: "" 
     },
     
+    // ⭐ Controlled Price, Discount & Social Proof
+    mrp: {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+
+    rating: {
+      type: Number,
+      default: 4.9,
+      min: 1,
+      max: 5
+    },
+
+    reviews: {
+      type: Number,
+      default: 85,
+      min: 0
+    },
+
+    discountBadge: {
+      type: String,
+      default: "",
+      trim: true
+    },
+    
     // ⭐ NEW PPC SYSTEM
     // Kitni PPC milegi is product pe (1, 2, 5, etc.)
     ppcReward: { 
