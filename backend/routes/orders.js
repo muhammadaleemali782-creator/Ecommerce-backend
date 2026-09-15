@@ -4,6 +4,7 @@ import protect from "../middleware/auth.js"
 import allowRoles from "../middleware/allowRoles.js"
 import Order from "../models/Order.js"
 import User from "../models/User.js"
+import Commission from "../commission/commission.model.js"
 import { createPPCCommissionFromOrder } from "../commission/ppcCommission.controller.js"
 import {
   notifyNewOrder,
@@ -255,6 +256,132 @@ router.put("/admin-approve/:id", protect, allowRoles("admin"), async (req, res) 
   } catch (err) {
     console.error("Admin approve error:", err)
     res.status(500).json({ msg: err.message })
+  }
+})
+
+/* ═══════════════════════════════════════════════
+   PUT /orders/change-seller/:id
+   ⭐ Admin can change the seller of ANY order (pending, dist_approved, confirmed, rejected)
+   Body: { newSellerId } (ObjectId or User name/ID like "DB001/DS005")
+   ⭐ If confirmed:
+      - Reverts old PPC commissions and old seller sales
+      - Re-distributes PPC and sales to new seller & their chain
+      - Updates order.sellerId, placedBy / onBehalfOf, and distributorId
+═══════════════════════════════════════════════ */
+router.put("/change-seller/:id", protect, allowRoles("admin"), async (req, res) => {
+  try {
+    const { newSellerId } = req.body
+    if (!newSellerId) {
+      return res.status(400).json({ msg: "Naya seller ID / selection zaroori hai" })
+    }
+
+    const order = await Order.findById(req.params.id)
+    if (!order) return res.status(404).json({ msg: "Order not found" })
+
+    // Find new seller by _id or name/ID (e.g. DB001/DS005) or email
+    const trimmedId = String(newSellerId).trim()
+    const query = mongoose.isValidObjectId(trimmedId)
+      ? { $or: [{ _id: trimmedId }, { name: trimmedId }, { email: trimmedId.toLowerCase() }] }
+      : { $or: [{ name: trimmedId }, { email: trimmedId.toLowerCase() }] }
+
+    const newSeller = await User.findOne(query)
+    if (!newSeller) {
+      return res.status(404).json({ msg: `Seller '${trimmedId}' nahi mila. Kripya valid ID ya naam dalein.` })
+    }
+
+    if (newSeller.isDeleted) {
+      return res.status(400).json({ msg: "Yeh seller account deleted hai." })
+    }
+
+    const oldSellerId = order.sellerId
+
+    if (String(newSeller._id) === String(oldSellerId)) {
+      return res.status(400).json({ msg: "Order pehle se hi is seller ke paas hai." })
+    }
+
+    // ── 1. IF ORDER WAS ALREADY CONFIRMED: REVERT OLD COMMISSIONS & SALES ──
+    if (order.status === "confirmed") {
+      const oldCommissions = await Commission.find({ orderId: order._id })
+      for (const comm of oldCommissions) {
+        if (comm.toUser) {
+          const recipient = await User.findById(comm.toUser)
+          if (recipient) {
+            const ppc = Number(comm.ppcCount || 0)
+            if (comm.walletType === "userWallet") {
+              recipient.userWalletAsSeller = Math.max(0, (recipient.userWalletAsSeller || 0) - ppc)
+            } else if (comm.walletType === "sellerWalletAsSeller") {
+              recipient.sellerWalletAsSeller = Math.max(0, (recipient.sellerWalletAsSeller || 0) - ppc)
+            } else if (comm.walletType === "sellerWallet") {
+              recipient.sellerWallet = Math.max(0, (recipient.sellerWallet || 0) - ppc)
+            }
+            recipient.totalPPCEarned = Math.max(0, (recipient.totalPPCEarned || 0) - ppc)
+            await recipient.save()
+          }
+        }
+      }
+
+      // Revert sales from old seller
+      if (oldSellerId) {
+        const oldSeller = await User.findById(oldSellerId)
+        if (oldSeller) {
+          oldSeller.sales = Math.max(0, (oldSeller.sales || 0) - (order.total || 0))
+          await oldSeller.save()
+        }
+      }
+
+      // Delete old commissions so createPPCCommissionFromOrder can regenerate for new seller
+      await Commission.deleteMany({ orderId: order._id })
+    }
+
+    // ── 2. UPDATE ORDER SELLER AND HIERARCHY ──
+    order.sellerId = newSeller._id
+
+    // If placedById was old seller or placedBy was seller role, update to new seller
+    if (!order.placedById || String(order.placedById) === String(oldSellerId) || order.placedByRole === "seller") {
+      order.placedById   = newSeller._id
+      order.placedByName = newSeller.name
+      order.placedByRole = newSeller.role
+    }
+
+    // If onBehalfOfId was old seller, update to new seller
+    if (String(order.onBehalfOfId) === String(oldSellerId) || order.onBehalfOfRole === "seller") {
+      order.onBehalfOfId   = newSeller._id
+      order.onBehalfOfName = newSeller.name
+      order.onBehalfOfRole = newSeller.role
+    }
+
+    // Update distributor for new seller
+    const newDistId = await findDistributorId(newSeller)
+    if (newDistId) {
+      order.distributorId = newDistId
+    }
+
+    await order.save()
+
+    // ── 3. IF CONFIRMED: RE-DISTRIBUTE PPC & SALES TO NEW SELLER ──
+    if (order.status === "confirmed") {
+      const freshOrder = await Order.findById(order._id)
+        .populate("sellerId")
+        .populate("distributorId")
+        .populate("userId")
+      await triggerFinalConfirm(freshOrder)
+    }
+
+    const updatedOrder = await Order.findById(order._id)
+      .populate("sellerId",      "name fullName email role phone")
+      .populate("userId",        "name fullName email role phone")
+      .populate("distributorId", "name fullName email role phone")
+
+    console.log(`✅ Order ${order._id} seller changed from ${oldSellerId} to ${newSeller._id} (${newSeller.name})`)
+
+    res.json({
+      success: true,
+      order: updatedOrder,
+      message: `Seller successfully changed to ${newSeller.fullName || newSeller.name} (${newSeller.name}). PPC and Sales transferred.`
+    })
+  } catch (err) {
+    console.error("Change seller error:", err)
+    res.status(500).json({ msg: err.message || "Seller change karne mein error aaya" })
   }
 })
 
