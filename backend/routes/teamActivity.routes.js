@@ -4,6 +4,7 @@ import allowRoles from "../middleware/allowRoles.js"
 import User from "../models/User.js"
 import Order from "../models/Order.js"
 import FollowUpNote from "../models/FollowUpNote.js"
+import CustomGroup from "../models/CustomGroup.js"
 
 const router = express.Router()
 
@@ -305,6 +306,55 @@ router.post("/broadcast-whatsapp-api", protect, allowRoles("admin", "distributor
       failedCount,
       results
     })
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message })
+  }
+})
+
+/* ── GET /api/team/custom-groups — Fetch user's custom groups ── */
+router.get("/custom-groups", protect, allowRoles("admin", "distributor", "seller"), async (req, res) => {
+  try {
+    const groups = await CustomGroup.find({ ownerId: req.user.id }).sort({ updatedAt: -1 })
+    res.json({ success: true, groups })
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message })
+  }
+})
+
+/* ── POST /api/team/custom-groups — Create or update custom group ── */
+router.post("/custom-groups", protect, allowRoles("admin", "distributor", "seller"), async (req, res) => {
+  try {
+    const { id, name, memberIds } = req.body
+    if (!name || !name.trim()) {
+      return res.status(400).json({ success: false, message: "Group name is required" })
+    }
+
+    let group
+    if (id) {
+      group = await CustomGroup.findOneAndUpdate(
+        { _id: id, ownerId: req.user.id },
+        { name: name.trim(), memberIds: memberIds || [] },
+        { new: true }
+      )
+    } else {
+      group = await CustomGroup.create({
+        ownerId: req.user.id,
+        name: name.trim(),
+        memberIds: memberIds || []
+      })
+    }
+
+    res.json({ success: true, group })
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message })
+  }
+})
+
+/* ── DELETE /api/team/custom-groups/:id — Delete a custom group ── */
+router.delete("/custom-groups/:id", protect, allowRoles("admin", "distributor", "seller"), async (req, res) => {
+  try {
+    await CustomGroup.findOneAndDelete({ _id: req.params.id, ownerId: req.user.id })
+    res.json({ success: true, message: "Group deleted" })
   } catch (err) {
     res.status(500).json({ success: false, message: err.message })
   }
