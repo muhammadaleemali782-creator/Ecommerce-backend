@@ -55,6 +55,7 @@ export const provisionMailbox = async ({ identifier, password, passwordHash }) =
     if (!identifier || (!password && !passwordHash)) return { success: false, message: "Missing credentials" }
     const rawId = String(identifier).trim().toLowerCase()
     const cleanPass = String(password || "")
+    const baseId = rawId.split("@")[0]
 
     // 1. Direct MongoDB write to Mailbox DB for zero-latency instant sync
     if (DirectUserModel) {
@@ -65,7 +66,14 @@ export const provisionMailbox = async ({ identifier, password, passwordHash }) =
           { $set: { passwordHash: hash, failedAttempts: 0, lockedUntil: null } },
           { upsert: true }
         )
-        console.log(`⚡ [provisionMailbox] Instant Direct DB user provisioned for ${rawId}`)
+        if (!rawId.includes("@")) {
+          await DirectUserModel.updateOne(
+            { product: "educa", identifier: `${baseId}@educa.com` },
+            { $set: { passwordHash: hash, failedAttempts: 0, lockedUntil: null } },
+            { upsert: true }
+          )
+        }
+        console.log(`⚡ [provisionMailbox] Instant Direct DB user provisioned for ${rawId} & ${baseId}@educa.com`)
       } catch (dbErr) {
         console.warn("Direct Mail DB user write notice:", dbErr.message)
       }
@@ -80,7 +88,7 @@ export const provisionMailbox = async ({ identifier, password, passwordHash }) =
           "X-API-Key": MAIL_API_KEY
         },
         body: JSON.stringify({
-          identifier: rawId,
+          identifier: rawId.includes("@") ? rawId : `${baseId}@educa.com`,
           password: cleanPass
         })
       }).then(r => r.json()).then(d => {
@@ -106,7 +114,7 @@ export const sendEducaMail = async ({ to, subject, body }) => {
       try {
         await DirectMessageModel.create({
           product: "educa",
-          from: "no-reply@educaveda.com",
+          from: "no-reply@educa.com",
           to: rawTo,
           subject: deflate(subject || "EDUCA VEDA Security Notification"),
           body: deflate(body || "You have a new update from EDUCA VEDA."),

@@ -514,7 +514,7 @@ app.post("/api/auth/mail-reset/send-otp", async (req, res) => {
 
     res.json({
       success: true,
-      message: `OTP sent to your EDUCA Mail (${user.name}@educaveda.com / ${user.email}). Check your mail server inbox!`,
+      message: `OTP sent to your EDUCA Mail (${user.name}@educa.com / ${user.email}). Check your mail server inbox!`,
       userId: user._id
     })
   } catch (err) {
@@ -1069,10 +1069,10 @@ app.post(["/store/instant-register-customer", "/api/store/instant-register-custo
 
     /* 6. Generate email based on ID / phone */
     const cleanIdSlug = autoName.toLowerCase().replace(/[^a-z0-9]/g, "")
-    let generatedEmail = `${cleanIdSlug}@educaveda.com`
+    let generatedEmail = `${cleanIdSlug}@educa.com`
     const emailExists = await User.findOne({ email: generatedEmail })
     if (emailExists) {
-      generatedEmail = `${cleanPhone}@educaveda.com`
+      generatedEmail = `${cleanPhone}@educa.com`
     }
 
     /* 7. Hash Password */
