@@ -50,6 +50,12 @@ const requestSchema = new mongoose.Schema({
     default: ""
   },
 
+  category: {
+    type: String,
+    trim: true,
+    default: ""
+  },
+
   /* =====================================================
      ⭐ IDENTITY VERIFICATION — Aadhar OR PAN (ek zaroor, unique)
   ===================================================== */

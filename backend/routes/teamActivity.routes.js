@@ -16,7 +16,7 @@ router.get("/activity-radar", protect, allowRoles("admin", "distributor", "selle
     // Recursive downline fetch helper
     const getAllChildren = async (parentId) => {
       const children = await User.find({ parentId, isDeleted: { $ne: true } })
-        .select("_id name fullName role phone email address parentId sales teamSales createdAt")
+        .select("_id name fullName role phone email address parentId sales teamSales category createdAt")
       let list = [...children]
       for (const child of children) {
         const subs = await getAllChildren(child._id)
@@ -28,7 +28,7 @@ router.get("/activity-radar", protect, allowRoles("admin", "distributor", "selle
     let teamMembers = []
     if (myRole === "admin") {
       teamMembers = await User.find({ isDeleted: { $ne: true }, role: { $in: ["distributor", "seller", "user"] } })
-        .select("_id name fullName role phone email address parentId sales teamSales createdAt")
+        .select("_id name fullName role phone email address parentId sales teamSales category createdAt")
     } else {
       teamMembers = await getAllChildren(me)
     }
@@ -75,6 +75,7 @@ router.get("/activity-radar", protect, allowRoles("admin", "distributor", "selle
           name: member.name,
           fullName: member.fullName || member.name,
           role: member.role,
+          category: member.category || "",
           phone: member.phone || "",
           email: member.email,
           address: member.address || "",
@@ -147,6 +148,28 @@ router.get("/member-notes/:memberId", protect, allowRoles("admin", "distributor"
       .sort({ createdAt: -1 })
       .limit(30)
     res.json({ success: true, notes })
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message })
+  }
+})
+
+/* ── PUT /api/team/member-category/:id — Update member category ── */
+router.put("/member-category/:id", protect, allowRoles("admin", "distributor", "seller"), async (req, res) => {
+  try {
+    const { category } = req.body
+    const member = await User.findById(req.params.id)
+    if (!member) {
+      return res.status(404).json({ success: false, message: "Member not found" })
+    }
+
+    member.category = (category || "").trim()
+    await member.save()
+
+    res.json({
+      success: true,
+      message: "Category updated successfully",
+      category: member.category
+    })
   } catch (err) {
     res.status(500).json({ success: false, message: err.message })
   }

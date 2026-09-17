@@ -726,7 +726,7 @@ app.post("/requests/create", protect, async (req, res) => {
   try {
 
     /* ⭐ NEW PRODUCT FIELDS */
-    const { type, name, email, phone, address, productIds, assignAllProducts, requestedForId, idType, idNumber } = req.body
+    const { type, name, email, phone, address, productIds, assignAllProducts, requestedForId, idType, idNumber, category } = req.body
 
     if (!type || !name || !email) {
       return res.status(400).json({ message: "All fields required" })
@@ -806,6 +806,7 @@ app.post("/requests/create", protect, async (req, res) => {
       address: address || "",
       idType,
       idNumber: cleanIdNumber,
+      category: (category || "").trim(),
       status: "pending",
 
       /* ⭐ NEW */
@@ -949,6 +950,7 @@ app.post("/requests/public-create", async (req, res) => {
       address: (address || "").trim(),
       idType,
       idNumber: cleanIdNumber,
+      category: (req.body.category || "").trim(),
       status: "pending",
       source: "referral_link",
       referralCode: referrer.name
@@ -1384,7 +1386,7 @@ app.post(
   allowRoles("admin", "distributor", "seller"),
   async (req, res) => {
     try {
-      const { parentId, email, password, role, assignedProducts, fullName, name: inputName, phone, address } = req.body
+      const { parentId, email, password, role, assignedProducts, fullName, name: inputName, phone, address, category } = req.body
 
       /* ── Role-based creation rules ── */
       if (req.user.role === "distributor") {
@@ -1436,12 +1438,14 @@ app.post(
       const resolvedFullName = (fullName || inputName || "").trim()
       const resolvedPhone = (phone || "").trim()
       const resolvedAddress = (address || "").trim()
+      const resolvedCategory = (category || "").trim()
 
       const newUser = await User.create({
         name: autoName,
         fullName: resolvedFullName,
         phone: resolvedPhone,
         address: resolvedAddress,
+        category: resolvedCategory,
         email,
         password: hashed,
         role,
@@ -2172,7 +2176,8 @@ else if (request.assignAllProducts) {
       phone: request.phone || "",
       address: request.address || "",
       idType: request.idType || "",
-      idNumber: request.idNumber || null
+      idNumber: request.idNumber || null,
+      category: request.category || ""
     })
 
     request.status           = "approved"
