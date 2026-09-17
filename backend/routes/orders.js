@@ -89,7 +89,7 @@ router.post("/", protect, async (req, res) => {
       if (nearestSeller) {
         sellerId = nearestSeller._id
       } else {
-        sellerId = me._id
+        sellerId = me.parentId || me._id
       }
     } else if (behalfUser) {
       // ✅ FIX: Behalf order — sellerId aur userId behalfUser ke role se decide karo
@@ -99,7 +99,7 @@ router.post("/", protect, async (req, res) => {
         // behalfUser (user) ke upar wala nearest seller = sellerId
         const behalfUserFull = await User.findById(behalfUser._id).select("parentId")
         const nearestSeller = await findNearestSeller(behalfUserFull?.parentId)
-        sellerId = nearestSeller?._id || behalfUser._id
+        sellerId = nearestSeller?._id || behalfUserFull?.parentId || behalfUser._id
       } else if (behalfUser.role === "seller") {
         // Distributor ne SELLER ki taraf se order lagaya
         userId   = null          // koi user nahi — direct seller order hai
@@ -136,7 +136,12 @@ router.post("/", protect, async (req, res) => {
       await notifyNewOrder({ order, seller: me, distributor, adminIds })
     } catch (ne) { console.error("Notif error:", ne.message) }
 
-    res.json(order)
+    const populatedOrder = await Order.findById(order._id)
+      .populate("sellerId",      "name fullName email role phone")
+      .populate("userId",        "name fullName email role phone")
+      .populate("distributorId", "name fullName email role phone")
+
+    res.json(populatedOrder || order)
   } catch (err) {
     console.error("❌ ORDER ERROR:", err)
     res.status(500).json({ msg: "Order creation failed" })
@@ -150,8 +155,9 @@ router.post("/", protect, async (req, res) => {
 router.get("/pending", protect, allowRoles("distributor"), async (req, res) => {
   try {
     const orders = await Order.find({ distributorId: req.user.id, status: "pending" })
-      .populate("sellerId", "name email role")
-      .populate("userId",   "name email role")
+      .populate("sellerId",      "name fullName email role phone")
+      .populate("userId",        "name fullName email role phone")
+      .populate("distributorId", "name fullName email role phone")
       .sort({ createdAt: -1 })
     res.json(orders)
   } catch (err) { res.status(500).json({ msg: err.message }) }
@@ -440,8 +446,9 @@ router.put("/reject/:id", protect, async (req, res) => {
 router.get("/distributor", protect, allowRoles("distributor"), async (req, res) => {
   try {
     const orders = await Order.find({ distributorId: req.user.id })
-      .populate("sellerId", "name fullName email role phone")
-      .populate("userId",   "name fullName email role phone")
+      .populate("sellerId",      "name fullName email role phone")
+      .populate("userId",        "name fullName email role phone")
+      .populate("distributorId", "name fullName email role phone")
       .sort({ createdAt: -1 })
     res.json(orders)
   } catch (err) { res.status(500).json({ msg: err.message }) }

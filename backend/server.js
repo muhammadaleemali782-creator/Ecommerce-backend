@@ -1067,12 +1067,12 @@ app.post(["/store/instant-register-customer", "/api/store/instant-register-custo
     /* 5. Auto generate Customer ID: ALWAYS "user" role */
     const autoName = await generateUserId("user", User, parentName)
 
-    /* 6. Generate email based on ID / phone */
-    const cleanIdSlug = autoName.toLowerCase().replace(/[^a-z0-9]/g, "")
-    let generatedEmail = `${cleanIdSlug}@educa.com`
+    /* 6. Generate clean email based on customer fullName */
+    const cleanNameSlug = fullName.trim().toLowerCase().replace(/[^a-z0-9]/g, "") || "user"
+    let generatedEmail = `${cleanNameSlug}@educa.com`
     const emailExists = await User.findOne({ email: generatedEmail })
     if (emailExists) {
-      generatedEmail = `${cleanPhone}@educa.com`
+      generatedEmail = `${cleanNameSlug}${cleanPhone.slice(-4)}@educa.com`
     }
 
     /* 7. Hash Password */
