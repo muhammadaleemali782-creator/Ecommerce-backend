@@ -243,11 +243,16 @@ app.post("/login", async (req, res) => {
       })
     }
 
-    /* ✅ EMAIL CLEAN */
-    const cleanEmail = email.trim().toLowerCase()
-
-    /* ✅ FIND USER  ⭐⭐⭐ IMPORTANT FIX HERE */
-    const user = await User.findOne({ email: cleanEmail })
+    /* ✅ FIND USER BY EMAIL, ID (NAME), OR PHONE */
+    const cleanIdentifier = String(email).trim()
+    const cleanEmail = cleanIdentifier.toLowerCase()
+    const user = await User.findOne({
+      $or: [
+        { email: cleanEmail },
+        { name: { $regex: new RegExp(`^${cleanIdentifier.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, "i") } },
+        { phone: cleanIdentifier }
+      ]
+    })
       .select("+password")   // 🔥 PASSWORD ko force select karo
       .lean()
 
@@ -992,6 +997,136 @@ app.post("/requests/public-create", async (req, res) => {
     })
   } catch (err) {
     res.status(500).json({ message: err.message })
+  }
+})
+
+/* =====================================================
+   INSTANT STORE CUSTOMER REGISTRATION (ALWAYS "user" ROLE UNDER CONSULTANT)
+===================================================== */
+app.post(["/store/instant-register-customer", "/api/store/instant-register-customer"], async (req, res) => {
+  try {
+    const { ref, fullName, phone, address, idNumber, password } = req.body
+
+    if (!fullName || !fullName.trim()) {
+      return res.status(400).json({ success: false, message: "Kripya apna pura naam likhein" })
+    }
+
+    if (!password || password.trim().length < 4) {
+      return res.status(400).json({ success: false, message: "Password kam se kam 4 aksharo ka hona chahiye" })
+    }
+
+    /* 1. Phone number validation */
+    const phoneCheck = validateIndianPhone(phone, false)
+    if (!phoneCheck.valid) {
+      return res.status(400).json({ success: false, message: phoneCheck.message })
+    }
+    const cleanPhone = phoneCheck.value
+
+    /* 2. Aadhar number validation */
+    const idCheck = validateIdNumber("aadhar", idNumber)
+    if (!idCheck.valid) {
+      return res.status(400).json({ success: false, message: idCheck.message })
+    }
+    const cleanAadhar = idCheck.value
+
+    /* 3. Duplicate checks for customer */
+    const existingAadhar = await User.findOne({ idNumber: cleanAadhar, role: "user", isDeleted: { $ne: true } })
+    if (existingAadhar) {
+      return res.status(409).json({
+        success: false,
+        message: `Is Aadhar number se pehle se Customer ID (${existingAadhar.name}) bani hui hai. Kripya apni ID se login karein.`
+      })
+    }
+
+    const existingPhone = await User.findOne({ phone: cleanPhone, role: "user", isDeleted: { $ne: true } })
+    if (existingPhone) {
+      return res.status(409).json({
+        success: false,
+        message: `Is Mobile number se pehle se Customer ID (${existingPhone.name}) bani hui hai. Kripya login karein.`
+      })
+    }
+
+    /* 4. Resolve Sponsor / Referrer */
+    let referrer = null
+    if (ref && String(ref).trim()) {
+      const cleanRef = String(ref).trim()
+      referrer = await User.findOne({
+        name: { $regex: new RegExp(`^${cleanRef.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, "i") },
+        isDeleted: { $ne: true },
+        isBlocked: { $ne: true }
+      })
+    }
+
+    if (!referrer) {
+      referrer = await User.findOne({ role: "admin", isDeleted: { $ne: true } })
+    }
+
+    const parentId = referrer ? referrer._id : null
+    const parentName = referrer && referrer.role !== "admin" ? referrer.name : null
+
+    /* 5. Auto generate Customer ID: ALWAYS "user" role */
+    const autoName = await generateUserId("user", User, parentName)
+
+    /* 6. Generate email based on ID / phone */
+    const cleanIdSlug = autoName.toLowerCase().replace(/[^a-z0-9]/g, "")
+    let generatedEmail = `${cleanIdSlug}@educaveda.com`
+    const emailExists = await User.findOne({ email: generatedEmail })
+    if (emailExists) {
+      generatedEmail = `${cleanPhone}@educaveda.com`
+    }
+
+    /* 7. Hash Password */
+    const hashed = await bcrypt.hash(password.trim(), 10)
+
+    /* 8. Create User (Customer) */
+    const newUser = await User.create({
+      name: autoName,
+      fullName: fullName.trim(),
+      phone: cleanPhone,
+      address: (address || "").trim(),
+      idType: "aadhar",
+      idNumber: cleanAadhar,
+      email: generatedEmail,
+      password: hashed,
+      role: "user", // ALWAYS "user"! Never seller, never distributor
+      parentId: parentId,
+      sales: 0,
+      teamSales: 0
+    })
+
+    /* 9. Auto-provision in EDUCA Mail Server */
+    try {
+      await provisionMailbox({ identifier: newUser.name, password: password.trim() })
+      console.log(`📧 EDUCA Mailbox provisioned for new customer: ${newUser.name}`)
+    } catch (mailErr) {
+      console.warn("Mailbox provisioning notice:", mailErr.message)
+    }
+
+    /* 10. Generate token */
+    const token = generateToken(newUser)
+
+    res.json({
+      success: true,
+      token,
+      role: newUser.role,
+      user: {
+        id: String(newUser._id),
+        _id: String(newUser._id),
+        name: newUser.name,
+        fullName: newUser.fullName,
+        phone: newUser.phone,
+        address: newUser.address,
+        idType: newUser.idType,
+        idNumber: newUser.idNumber,
+        email: newUser.email,
+        role: newUser.role,
+        parentId: newUser.parentId
+      },
+      message: `🎉 Mubarak! Aapki Customer ID ${newUser.name} ban gayi hai!`
+    })
+  } catch (err) {
+    console.error("Instant register error:", err)
+    res.status(500).json({ success: false, message: err.message })
   }
 })
 
