@@ -175,4 +175,139 @@ router.put("/member-category/:id", protect, allowRoles("admin", "distributor", "
   }
 })
 
+/* ── POST /api/team/broadcast-whatsapp-api — Direct background WhatsApp sender ── */
+router.post("/broadcast-whatsapp-api", protect, allowRoles("admin", "distributor", "seller"), async (req, res) => {
+  try {
+    const { recipients = [], messageTemplate = "followup", customText = "" } = req.body
+
+    if (!Array.isArray(recipients) || recipients.length === 0) {
+      return res.status(400).json({ success: false, message: "No recipients selected" })
+    }
+
+    // Check if WhatsApp Gateway is configured
+    // 1. Meta WhatsApp Cloud API
+    const metaToken = process.env.WHATSAPP_CLOUD_TOKEN
+    const metaPhoneId = process.env.WHATSAPP_PHONE_NUMBER_ID
+
+    // 2. UltraMsg API
+    const ultramsgInstance = process.env.ULTRAMSG_INSTANCE_ID
+    const ultramsgToken = process.env.ULTRAMSG_TOKEN
+
+    const isConfigured = Boolean((metaToken && metaPhoneId) || (ultramsgInstance && ultramsgToken))
+
+    if (!isConfigured) {
+      return res.status(200).json({
+        success: false,
+        isConfigured: false,
+        message: "WhatsApp Gateway API (.env) me configure nahi hai. Direct background me bina WhatsApp khole bhejne ke liye Meta Cloud API ya UltraMsg API credentials zaroori hain."
+      })
+    }
+
+    let sentCount = 0
+    let failedCount = 0
+    const results = []
+
+    for (const item of recipients) {
+      const { id, name, phone, category = "", daysInactive = 0 } = item
+      if (!phone) {
+        failedCount++
+        results.push({ id, name, status: "failed", reason: "Phone number missing" })
+        continue
+      }
+
+      const cleanPhone = phone.replace(/[^0-9]/g, "")
+      const formattedPhone = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone
+
+      // Construct personalized message
+      let msg = ""
+      if (messageTemplate === "custom") {
+        msg = (customText || "")
+          .replace(/{name}/g, name || "Ji")
+          .replace(/{category}/g, category || "General")
+          .replace(/{daysInactive}/g, `${daysInactive}`)
+          .replace(/{storeLink}/g, "https://educa-store.vercel.app/")
+      } else if (messageTemplate === "category") {
+        msg = `Namaste ${name || "Ji"} ji! 👋\n\nHum EDUCA VEDA se connect kar rahe hain. Aapke *${category || "Health"}* related health requirements ke liye hamare paas pure Ayurvedic formulations available hain.\n\nKoi help ya consultation chahiye toh batayein!\n🛍️ Store Link: https://educa-store.vercel.app/`
+      } else if (messageTemplate === "offer") {
+        msg = `🎉 Namaste ${name || "Ji"} ji! EDUCA VEDA par naye Ayurvedic formulations aur special health offers live ho gaye hain.\n\nApne manpasand products dekhne aur order karne ke liye visit karein:\n🛍️ Store Link: https://educa-store.vercel.app/`
+      } else {
+        msg = `Namaste ${name || "Ji"} ji! 👋\n\nHumne notice kiya aapne pichle *${daysInactive}* dino se EDUCA VEDA me koi naya order nahi lagaya hai. Koi product guidance ya order placement me help chahiye toh batayein!\n\n🛍️ Store Link: https://educa-store.vercel.app/`
+      }
+
+      try {
+        if (ultramsgInstance && ultramsgToken) {
+          // Send via UltraMsg
+          const uRes = await fetch(`https://api.ultramsg.com/${ultramsgInstance}/messages/chat`, {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({
+              token: ultramsgToken,
+              to: formattedPhone,
+              body: msg
+            })
+          })
+          const uData = await uRes.json()
+          if (uData.sent === "true" || uData.id) {
+            sentCount++
+            results.push({ id, name, status: "sent", messageId: uData.id })
+          } else {
+            failedCount++
+            results.push({ id, name, status: "failed", reason: uData.error || "UltraMsg error" })
+          }
+        } else if (metaToken && metaPhoneId) {
+          // Send via Meta Cloud API
+          const mRes = await fetch(`https://graph.facebook.com/v19.0/${metaPhoneId}/messages`, {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${metaToken}`,
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+              messaging_product: "whatsapp",
+              to: formattedPhone,
+              type: "text",
+              text: { body: msg }
+            })
+          })
+          const mData = await mRes.json()
+          if (mData.messages && mData.messages[0]) {
+            sentCount++
+            results.push({ id, name, status: "sent", messageId: mData.messages[0].id })
+          } else {
+            failedCount++
+            results.push({ id, name, status: "failed", reason: mData.error?.message || "Meta API error" })
+          }
+        }
+
+        // Auto-log note in MongoDB
+        if (id) {
+          await FollowUpNote.create({
+            memberId: id,
+            createdById: req.user.id,
+            createdByName: req.user.name || "System",
+            createdByFullName: req.user.fullName || req.user.name || "",
+            createdByRole: req.user.role,
+            note: `Direct WhatsApp Broadcast sent [${messageTemplate}]`,
+            contactMethod: "whatsapp",
+            status: "follow_up_taken"
+          })
+        }
+      } catch (err) {
+        failedCount++
+        results.push({ id, name, status: "failed", reason: err.message })
+      }
+    }
+
+    res.json({
+      success: true,
+      isConfigured: true,
+      sentCount,
+      failedCount,
+      results
+    })
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message })
+  }
+})
+
 export default router
