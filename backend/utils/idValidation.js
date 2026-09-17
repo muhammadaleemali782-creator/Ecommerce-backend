@@ -29,3 +29,23 @@ export function validateIdNumber(idType, idNumber) {
 
   return { valid: true, value }
 }
+
+export function validateIndianPhone(phone, isRequired = false) {
+  if (!phone || !String(phone).trim()) {
+    if (isRequired) return { valid: false, message: "Mobile number zaroori hai" }
+    return { valid: true, value: "" }
+  }
+
+  let digits = String(phone).replace(/\D/g, "")
+  if (digits.length === 12 && digits.startsWith("91")) {
+    digits = digits.slice(2)
+  } else if (digits.length === 11 && digits.startsWith("0")) {
+    digits = digits.slice(1)
+  }
+
+  if (digits.length !== 10) {
+    return { valid: false, message: "Mobile number exactly 10 digit ka hona chahiye (bina 0 ya +91 ke)" }
+  }
+
+  return { valid: true, value: digits }
+}

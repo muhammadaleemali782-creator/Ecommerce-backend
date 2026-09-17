@@ -88,7 +88,7 @@ import { createPPCCommissionFromOrder, getMyPPCWallet } from "./commission/ppcCo
 // 🔔 NOTIFICATIONS
 import notificationRoutes from "./routes/notifications.js"
 import { notifyNewUserRequest, notifyRequestApproved, notifyRequestRejected } from "./utils/notifHelper.js"
-import { validateIdNumber } from "./utils/idValidation.js"
+import { validateIdNumber, validateIndianPhone } from "./utils/idValidation.js"
 
 // 🧩 SERVICES (blog-jaise link cards)
 import servicesRoutes from "./routes/services.js"
@@ -732,6 +732,13 @@ app.post("/requests/create", protect, async (req, res) => {
       return res.status(400).json({ message: "All fields required" })
     }
 
+    /* ⭐ Phone number validation (must be 10 digits if provided) */
+    const phoneCheck = validateIndianPhone(phone, false)
+    if (!phoneCheck.valid) {
+      return res.status(400).json({ message: phoneCheck.message })
+    }
+    const cleanPhone = phoneCheck.value
+
     /* ⭐ Aadhar / PAN — koi ek zaroori hai, aur unique hona chahiye */
     const idCheck = validateIdNumber(idType, idNumber)
     if (!idCheck.valid) {
@@ -802,7 +809,7 @@ app.post("/requests/create", protect, async (req, res) => {
       type,
       name,
       email,
-      phone: phone || "",
+      phone: cleanPhone || "",
       address: address || "",
       idType,
       idNumber: cleanIdNumber,
@@ -922,6 +929,13 @@ app.post("/requests/public-create", async (req, res) => {
       return res.status(409).json({ message: "Ye email already registered hai" })
     }
 
+    /* ⭐ Phone number validation */
+    const phoneCheck = validateIndianPhone(phone, false)
+    if (!phoneCheck.valid) {
+      return res.status(400).json({ message: phoneCheck.message })
+    }
+    const cleanPhone = phoneCheck.value
+
     // Aadhar / PAN check
     const idCheck = validateIdNumber(idType, idNumber)
     if (!idCheck.valid) {
@@ -946,7 +960,7 @@ app.post("/requests/public-create", async (req, res) => {
       type,
       name: name.trim(),
       email: cleanEmail,
-      phone: (phone || "").trim(),
+      phone: cleanPhone || "",
       address: (address || "").trim(),
       idType,
       idNumber: cleanIdNumber,
@@ -1435,8 +1449,12 @@ app.post(
 
       const hashed = await bcrypt.hash(password, 10)
 
+      const phoneCheck = validateIndianPhone(phone, false)
+      if (!phoneCheck.valid) {
+        return res.status(400).json({ message: phoneCheck.message })
+      }
       const resolvedFullName = (fullName || inputName || "").trim()
-      const resolvedPhone = (phone || "").trim()
+      const resolvedPhone = phoneCheck.value
       const resolvedAddress = (address || "").trim()
       const resolvedCategory = (category || "").trim()
 
