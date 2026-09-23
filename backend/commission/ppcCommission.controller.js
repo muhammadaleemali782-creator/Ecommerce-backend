@@ -204,11 +204,11 @@ export const createPPCCommissionFromOrder = async (order) => {
         }
         pool.currentCycle.totalCompanyPPC += totalPPC
         pool.currentCycle.totalCompanySalesRupees += (order.total || 0)
-        const mult = pool.poolMultiplier || 10
-        pool.currentCycle.accumulatedPoolPPC = pool.currentCycle.totalCompanyPPC * mult
-        pool.currentCycle.accumulatedPoolRupees = pool.currentCycle.accumulatedPoolPPC * ppcRate
+        const rsPerPPC = pool.poolMultiplier ?? 10
+        pool.currentCycle.accumulatedPoolRupees = pool.currentCycle.totalCompanyPPC * rsPerPPC
+        pool.currentCycle.accumulatedPoolPPC = ppcRate > 0 ? (pool.currentCycle.accumulatedPoolRupees / ppcRate) : 0
         await pool.save()
-        console.log(`👑 Accumulated ${totalPPC} PPC to Company Royalty Pool (Current Pool: ${pool.currentCycle.accumulatedPoolPPC} PPC)`)
+        console.log(`👑 Accumulated ${totalPPC} PPC to Company Royalty Pool (Current Pool: ₹${pool.currentCycle.accumulatedPoolRupees} / ${pool.currentCycle.accumulatedPoolPPC} PPC)`)
       }
     } catch (poolErr) {
       console.error("Royalty pool accumulation error:", poolErr.message)

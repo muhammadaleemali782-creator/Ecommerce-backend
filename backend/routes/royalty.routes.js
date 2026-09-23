@@ -19,12 +19,19 @@ router.get("/status", protect, allowRoles("admin", "distributor"), async (req, r
       .select("name fullName email phone distributorWallet sellerWallet createdAt")
 
     const totalPPC = pool.currentCycle.totalCompanyPPC || 0
-    const multiplier = pool.poolMultiplier || 10
-    const poolPPC = totalPPC * multiplier
-    const poolRupees = poolPPC * rate
+    const rsPerPPC = pool.poolMultiplier ?? 10
+    const poolRupees = totalPPC * rsPerPPC
+    const poolPPC = rate > 0 ? (poolRupees / rate) : 0
     const distCount = distributors.length || 1
-    const sharePPC = poolPPC / distCount
     const shareRupees = poolRupees / distCount
+    const sharePPC = poolPPC / distCount
+
+    // Keep pool in sync
+    if (pool.currentCycle.accumulatedPoolRupees !== poolRupees || pool.currentCycle.accumulatedPoolPPC !== poolPPC) {
+      pool.currentCycle.accumulatedPoolRupees = poolRupees
+      pool.currentCycle.accumulatedPoolPPC = poolPPC
+      await pool.save()
+    }
 
     // Distributor's own past royalty history
     let myHistory = []
@@ -47,7 +54,7 @@ router.get("/status", protect, allowRoles("admin", "distributor"), async (req, r
 
     res.json({
       success: true,
-      poolMultiplier: multiplier,
+      poolMultiplier: rsPerPPC,
       poolPercentage: pool.poolPercentage,
       cyclePeriod: pool.cyclePeriod,
       isActive: pool.isActive,
@@ -56,7 +63,7 @@ router.get("/status", protect, allowRoles("admin", "distributor"), async (req, r
         startDate: pool.currentCycle.startDate,
         totalCompanyPPC: totalPPC,
         totalCompanySalesRupees: pool.currentCycle.totalCompanySalesRupees,
-        accumulatedPoolPPC: poolPPC,
+        accumulatedPoolPPC: Math.round(poolPPC * 100) / 100,
         accumulatedPoolRupees: poolRupees,
         eligibleDistributorsCount: distributors.length,
         projectedSharePerDistributorPPC: Math.round(sharePPC * 100) / 100,
@@ -76,11 +83,17 @@ router.put("/settings", protect, allowRoles("admin"), async (req, res) => {
   try {
     const { poolMultiplier, poolPercentage, cyclePeriod, isActive } = req.body
     const pool = await RoyaltyPool.getPool()
+    const settings = await PPCSettings.getSettings()
+    const rate = settings.basePPCValue || 40
 
     if (poolMultiplier !== undefined) pool.poolMultiplier = Math.max(1, Number(poolMultiplier))
     if (poolPercentage !== undefined) pool.poolPercentage = Math.max(0, Math.min(100, Number(poolPercentage)))
     if (cyclePeriod) pool.cyclePeriod = cyclePeriod
     if (isActive !== undefined) pool.isActive = Boolean(isActive)
+
+    const rsPerPPC = pool.poolMultiplier ?? 10
+    pool.currentCycle.accumulatedPoolRupees = (pool.currentCycle.totalCompanyPPC || 0) * rsPerPPC
+    pool.currentCycle.accumulatedPoolPPC = rate > 0 ? (pool.currentCycle.accumulatedPoolRupees / rate) : 0
 
     await pool.save()
     res.json({ success: true, pool })
@@ -102,13 +115,13 @@ router.post("/disburse", protect, allowRoles("admin"), async (req, res) => {
     }
 
     const totalPPC = pool.currentCycle.totalCompanyPPC || 0
-    const multiplier = pool.poolMultiplier || 10
-    const poolPPC = totalPPC * multiplier
-    const poolRupees = poolPPC * rate
-    const sharePPC = poolPPC / distributors.length
+    const rsPerPPC = pool.poolMultiplier ?? 10
+    const poolRupees = totalPPC * rsPerPPC
+    const poolPPC = rate > 0 ? (poolRupees / rate) : 0
     const shareRupees = poolRupees / distributors.length
+    const sharePPC = poolPPC / distributors.length
 
-    if (poolPPC <= 0) {
+    if (poolRupees <= 0) {
       return res.status(400).json({ success: false, message: "Accumulated royalty pool is zero. No turnover to distribute yet." })
     }
 
