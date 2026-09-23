@@ -3112,7 +3112,8 @@ app.get("/api/invoice-settings", protect, async (req, res) => {
     const keys = ["invoiceCompanyName","invoiceTagline","invoiceAddress","invoicePhone",
                   "invoiceEmail","invoiceGST","invoiceFooter","invoiceLogo",
                   "invoiceThemeColor","invoiceShowLogo","invoiceTerms",
-                  "invoiceShowBehalfInfo","invoiceCustomFields"]
+                  "invoiceShowBehalfInfo","invoiceCustomFields",
+                  "invoiceShowSellerDetails","invoiceShowSellerName","invoiceShowSellerId","invoiceShowDistributorId"]
     const docs = await Settings.find({ key: { $in: keys } })
     const result = {}
     docs.forEach(d => { result[d.key] = d.value })
@@ -3135,6 +3136,7 @@ app.get("/api/invoice-settings", protect, async (req, res) => {
       terms:          result.invoiceTerms        || "",
       showBehalfInfo:    result.invoiceShowBehalfInfo !== "false", // default true
       showSellerDetails: result.invoiceShowSellerDetails !== "false", // default true
+      showSellerName:    result.invoiceShowSellerName !== "false",    // default true (can be toggled off to only show User ID)
       showSellerId:      result.invoiceShowSellerId !== "false",   // default true
       showDistributorId: result.invoiceShowDistributorId !== "false", // default true
       customFields,   // [{label, value, position}]
@@ -3160,6 +3162,7 @@ const handleSaveInvoiceSettings = async (req, res) => {
       terms:             "invoiceTerms",
       showBehalfInfo:    "invoiceShowBehalfInfo",
       showSellerDetails: "invoiceShowSellerDetails",
+      showSellerName:    "invoiceShowSellerName",
       showSellerId:      "invoiceShowSellerId",
       showDistributorId: "invoiceShowDistributorId",
     }
