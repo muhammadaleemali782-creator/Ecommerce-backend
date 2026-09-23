@@ -112,6 +112,23 @@ app.use(express.json())
 // Frontend/app isko boot pe call karta hai taaki server "wake up" ho jaye
 app.get("/health", (req, res) => res.json({ status: "ok" }))
 
+/* ⭐ AUTO-DISAMBIGUATE DUPLICATE EMAILS
+   Agar email pehle se exist karti hai to system khud new characters/numbers add karke unique bana dega */
+const ensureUniqueEmail = async (rawEmail) => {
+  let email = (rawEmail || "").toLowerCase().trim()
+  if (!email) email = `user${Date.now()}@educa.com`
+  if (!email.includes("@")) email = `${email}@educa.com`
+  const [localPart, domainPart] = email.split("@")
+  let candidate = email
+  let counter = 1
+  while (await User.findOne({ email: candidate })) {
+    const suffix = Math.floor(100 + Math.random() * 900)
+    candidate = `${localPart}${suffix}${counter > 1 ? counter : ""}@${domainPart}`
+    counter++
+  }
+  return candidate
+}
+
 app.use("/orders", orderRoutes)
 
 // ⭐ NEW PPC SYSTEM ROUTES
@@ -1067,13 +1084,10 @@ app.post(["/store/instant-register-customer", "/api/store/instant-register-custo
     /* 5. Auto generate Customer ID: ALWAYS "user" role */
     const autoName = await generateUserId("user", User, parentName)
 
-    /* 6. Generate clean email based on customer fullName */
+    /* 6. Generate clean email based on customer fullName with auto uniqueness */
     const cleanNameSlug = fullName.trim().toLowerCase().replace(/[^a-z0-9]/g, "") || "user"
-    let generatedEmail = `${cleanNameSlug}@educa.com`
-    const emailExists = await User.findOne({ email: generatedEmail })
-    if (emailExists) {
-      generatedEmail = `${cleanNameSlug}${cleanPhone.slice(-4)}@educa.com`
-    }
+    const baseCandidate = `${cleanNameSlug}@educa.com`
+    const generatedEmail = await ensureUniqueEmail(baseCandidate)
 
     /* 7. Hash Password */
     const hashed = await bcrypt.hash(password.trim(), 10)
@@ -1556,12 +1570,8 @@ app.post(
         }
       }
 
-      const exists = await User.findOne({ email })
-      if (exists) {
-        return res.status(409).json({
-          message: "Email already exists"
-        })
-      }
+      // ⭐ Auto disambiguate duplicate email if email exists
+      const finalEmail = await ensureUniqueEmail(email)
 
       // ⭐ Actual parentId decide karo
       const actualParentId =
@@ -1599,7 +1609,7 @@ app.post(
         phone: resolvedPhone,
         address: resolvedAddress,
         category: resolvedCategory,
-        email,
+        email: finalEmail,
         password: hashed,
         role,
         parentId: actualParentId,
@@ -2272,8 +2282,7 @@ app.post("/requests/approve/:id", protect, allowRoles("admin"), async (req, res)
       return res.status(400).json({ message: "Already rejected" })
 
     const cleanEmail = request.email.trim().toLowerCase()
-    const exists = await User.findOne({ email: cleanEmail })
-    if (exists) return res.status(409).json({ message: "User already exists" })
+    const finalEmail = await ensureUniqueEmail(cleanEmail)
 
     // ⭐ Safety re-check — approval ke waqt bhi check karo ki iss role ke liye duplicate to nahi bana
     if (request.idNumber) {
@@ -2319,7 +2328,7 @@ else if (request.assignAllProducts) {
 
     const newUser = await User.create({
       name: autoName,
-      email: cleanEmail,
+      email: finalEmail,
       password: hashed,
       role: request.type,
       parentId: actualParentId,   // ⭐ selected member ke niche create hoga
@@ -3125,6 +3134,7 @@ app.get("/api/invoice-settings", protect, async (req, res) => {
       showLogo:       result.invoiceShowLogo     === "true",
       terms:          result.invoiceTerms        || "",
       showBehalfInfo:    result.invoiceShowBehalfInfo !== "false", // default true
+      showSellerDetails: result.invoiceShowSellerDetails !== "false", // default true
       showSellerId:      result.invoiceShowSellerId !== "false",   // default true
       showDistributorId: result.invoiceShowDistributorId !== "false", // default true
       customFields,   // [{label, value, position}]
@@ -3149,6 +3159,7 @@ const handleSaveInvoiceSettings = async (req, res) => {
       showLogo:          "invoiceShowLogo",
       terms:             "invoiceTerms",
       showBehalfInfo:    "invoiceShowBehalfInfo",
+      showSellerDetails: "invoiceShowSellerDetails",
       showSellerId:      "invoiceShowSellerId",
       showDistributorId: "invoiceShowDistributorId",
     }

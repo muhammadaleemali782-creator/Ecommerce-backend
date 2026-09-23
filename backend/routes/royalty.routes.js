@@ -19,7 +19,8 @@ router.get("/status", protect, allowRoles("admin", "distributor"), async (req, r
       .select("name fullName email phone distributorWallet sellerWallet createdAt")
 
     const totalPPC = pool.currentCycle.totalCompanyPPC || 0
-    const poolPPC = (totalPPC * pool.poolPercentage) / 100
+    const multiplier = pool.poolMultiplier || 10
+    const poolPPC = totalPPC * multiplier
     const poolRupees = poolPPC * rate
     const distCount = distributors.length || 1
     const sharePPC = poolPPC / distCount
@@ -46,6 +47,7 @@ router.get("/status", protect, allowRoles("admin", "distributor"), async (req, r
 
     res.json({
       success: true,
+      poolMultiplier: multiplier,
       poolPercentage: pool.poolPercentage,
       cyclePeriod: pool.cyclePeriod,
       isActive: pool.isActive,
@@ -72,9 +74,10 @@ router.get("/status", protect, allowRoles("admin", "distributor"), async (req, r
 /* ── PUT /api/royalty/settings — Admin updates pool % & cycle ── */
 router.put("/settings", protect, allowRoles("admin"), async (req, res) => {
   try {
-    const { poolPercentage, cyclePeriod, isActive } = req.body
+    const { poolMultiplier, poolPercentage, cyclePeriod, isActive } = req.body
     const pool = await RoyaltyPool.getPool()
 
+    if (poolMultiplier !== undefined) pool.poolMultiplier = Math.max(1, Number(poolMultiplier))
     if (poolPercentage !== undefined) pool.poolPercentage = Math.max(0, Math.min(100, Number(poolPercentage)))
     if (cyclePeriod) pool.cyclePeriod = cyclePeriod
     if (isActive !== undefined) pool.isActive = Boolean(isActive)
@@ -99,7 +102,8 @@ router.post("/disburse", protect, allowRoles("admin"), async (req, res) => {
     }
 
     const totalPPC = pool.currentCycle.totalCompanyPPC || 0
-    const poolPPC = (totalPPC * pool.poolPercentage) / 100
+    const multiplier = pool.poolMultiplier || 10
+    const poolPPC = totalPPC * multiplier
     const poolRupees = poolPPC * rate
     const sharePPC = poolPPC / distributors.length
     const shareRupees = poolRupees / distributors.length

@@ -204,7 +204,8 @@ export const createPPCCommissionFromOrder = async (order) => {
         }
         pool.currentCycle.totalCompanyPPC += totalPPC
         pool.currentCycle.totalCompanySalesRupees += (order.total || 0)
-        pool.currentCycle.accumulatedPoolPPC = (pool.currentCycle.totalCompanyPPC * pool.poolPercentage) / 100
+        const mult = pool.poolMultiplier || 10
+        pool.currentCycle.accumulatedPoolPPC = pool.currentCycle.totalCompanyPPC * mult
         pool.currentCycle.accumulatedPoolRupees = pool.currentCycle.accumulatedPoolPPC * ppcRate
         await pool.save()
         console.log(`👑 Accumulated ${totalPPC} PPC to Company Royalty Pool (Current Pool: ${pool.currentCycle.accumulatedPoolPPC} PPC)`)

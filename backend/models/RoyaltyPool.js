@@ -2,9 +2,13 @@ import mongoose from "mongoose"
 
 const royaltyPoolSchema = new mongoose.Schema(
   {
+    poolMultiplier: {
+      type: Number,
+      default: 10
+    },
     poolPercentage: {
       type: Number,
-      default: 1,
+      default: 10,
       min: 0,
       max: 100
     },
@@ -36,7 +40,8 @@ royaltyPoolSchema.statics.getPool = async function () {
   let pool = await this.findOne()
   if (!pool) {
     pool = await this.create({
-      poolPercentage: 1,
+      poolMultiplier: 10,
+      poolPercentage: 10,
       cyclePeriod: "monthly",
       isActive: true,
       currentCycle: {
@@ -47,6 +52,9 @@ royaltyPoolSchema.statics.getPool = async function () {
         accumulatedPoolRupees: 0
       }
     })
+  } else if (!pool.poolMultiplier) {
+    pool.poolMultiplier = 10
+    await pool.save()
   }
   return pool
 }
