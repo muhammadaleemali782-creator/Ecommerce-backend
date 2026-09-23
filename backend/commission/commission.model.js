@@ -71,10 +71,13 @@ const commissionSchema = new mongoose.Schema(
 
     // ✅ Chain info — seller/distributor names for frontend display
     chainInfo: {
-      directSellerName: { type: String, default: "" },
-      parentSellerName: { type: String, default: "" },
-      distributorName:  { type: String, default: "" },
-      isUserOrder:      { type: Boolean, default: false },
+      directSellerName:     { type: String, default: "" },
+      directSellerFullName: { type: String, default: "" },
+      parentSellerName:     { type: String, default: "" },
+      parentSellerFullName: { type: String, default: "" },
+      distributorName:      { type: String, default: "" },
+      distributorFullName:  { type: String, default: "" },
+      isUserOrder:          { type: Boolean, default: false },
     }
   },
   { timestamps: true }

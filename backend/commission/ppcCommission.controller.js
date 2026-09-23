@@ -43,7 +43,7 @@ const findAncestorByRole = async (userId, targetRole, visited = new Set()) => {
   if (!userId || visited.has(String(userId))) return null
   visited.add(String(userId))
 
-  const parent = await User.findById(userId).select("_id role parentId isDeleted name")
+  const parent = await User.findById(userId).select("_id role parentId isDeleted name fullName")
   if (!parent || parent.isDeleted) return null
   if (parent.role === "admin") return null          // stop at admin
   if (parent.role === targetRole) return parent
@@ -220,7 +220,7 @@ export const createPPCCommissionFromOrder = async (order) => {
     const isUserOrder = !!order.userId
 
     const sellerDoc = await User.findById(order.sellerId)
-      .select("_id name role parentId")
+      .select("_id name fullName role parentId")
 
     console.log(`📋 Order placed by: ${isUserOrder ? "USER" : "SELLER"} | sellerId role: ${sellerDoc?.role}`)
 
@@ -239,7 +239,7 @@ export const createPPCCommissionFromOrder = async (order) => {
     if (isUserOrder) {
       // ✅ Find direct seller — walk up tree if needed (handles nested users)
       let directSeller = await User.findById(order.sellerId)
-        .select("_id name role parentId userWalletAsSeller totalPPCEarned")
+        .select("_id name fullName role parentId userWalletAsSeller totalPPCEarned")
 
       // Agar sellerId still user hai (nested: US002→US001→DS001) → walk up
       if (directSeller?.role === "user") {
@@ -250,17 +250,20 @@ export const createPPCCommissionFromOrder = async (order) => {
           seen.add(String(curr._id))
           if (!curr.parentId) { curr = null; break }
           curr = await User.findById(curr.parentId)
-            .select("_id name role parentId userWalletAsSeller totalPPCEarned")
+            .select("_id name fullName role parentId userWalletAsSeller totalPPCEarned")
         }
         if (curr?.role === "seller") directSeller = curr
       }
 
       // ✅ Chain info — actual names store karo frontend display ke liye
       const chain = {
-        directSellerName: directSeller?.name || "",
-        distributorName:  distributor?.name  || "",
-        parentSellerName: "",
-        isUserOrder:      true,
+        directSellerName:     directSeller?.name || "",
+        directSellerFullName: directSeller?.fullName || "",
+        distributorName:      distributor?.name  || "",
+        distributorFullName:  distributor?.fullName || "",
+        parentSellerName:     "",
+        parentSellerFullName: "",
+        isUserOrder:          true,
       }
 
       // ⭐ Admin-configurable split (PPC Settings → User Order Distribution)
@@ -337,7 +340,7 @@ export const createPPCCommissionFromOrder = async (order) => {
     //  Direct Seller 50% + Parent Seller 25% + Distributor 25/50%
     // ══════════════════════════════════════════════════════
     const directSeller = await User.findById(order.sellerId)
-      .select("_id name role parentId userWalletAsSeller totalPPCEarned")
+      .select("_id name fullName role parentId userWalletAsSeller totalPPCEarned")
     if (!directSeller) {
       console.log("⚠️ Direct seller not found")
       return
@@ -355,10 +358,13 @@ export const createPPCCommissionFromOrder = async (order) => {
 
     // ✅ Chain info for all seller order commissions
     const sellerChain = {
-      directSellerName: directSeller.name || "",
-      parentSellerName: parentSeller?.name || "",
-      distributorName:  distributor?.name  || "",
-      isUserOrder:      false,
+      directSellerName:     directSeller.name || "",
+      directSellerFullName: directSeller.fullName || "",
+      parentSellerName:     parentSeller?.name || "",
+      parentSellerFullName: parentSeller?.fullName || "",
+      distributorName:      distributor?.name  || "",
+      distributorFullName:  distributor?.fullName || "",
+      isUserOrder:          false,
     }
 
     // ══════════════════════════════════════════════════════
@@ -492,7 +498,7 @@ export const getMyPPCWallet = async (req, res) => {
     if (!req.user?.id) return res.status(401).json({ message: "Unauthorized" })
 
     const user = await User.findById(req.user.id)
-      .select("name role distributorWallet sellerWallet sellerWalletAsSeller userWalletAsSeller totalPPCEarned totalWithdrawn")
+      .select("name fullName role distributorWallet sellerWallet sellerWalletAsSeller userWalletAsSeller totalPPCEarned totalWithdrawn")
     if (!user) return res.status(404).json({ message: "User not found" })
 
     const settings = await PPCSettings.getSettings()
@@ -501,7 +507,7 @@ export const getMyPPCWallet = async (req, res) => {
     // ✅ FIFO: All commissions oldest first for withdrawal deduction
     const allCommissions = await Commission.find({ toUser: user._id })
       .populate("fromUser", "name role fullName")
-      .populate("toUser",   "name role")
+      .populate("toUser",   "name role fullName")
       .populate("orderId",  "items total createdAt")
       .sort({ createdAt: 1 })   // oldest first → FIFO
       .lean()
@@ -537,11 +543,12 @@ export const getMyPPCWallet = async (req, res) => {
       if (!fromUserId) continue
 
       // fromUser IS the seller who placed the order — get full chain from them
-      const fromUserDoc = await User.findById(fromUserId).select("_id name role parentId")
+      const fromUserDoc = await User.findById(fromUserId).select("_id name fullName role parentId")
       if (!fromUserDoc) continue
 
       // directSeller = fromUser itself (agar seller) ya upar ka seller (agar user order)
       let directSellerName = ""
+      let directSellerFullName = ""
       let directSellerId   = null
 
       // ✅ FIX: Detect user order from fromUser's role — schema field missing hone par bhi kaam kare
@@ -552,21 +559,24 @@ export const getMyPPCWallet = async (req, res) => {
         const ds = await findAncestorByRole(fromUserDoc.parentId, "seller")
         // ✅ NEVER use user's name as directSellerName — only seller's name
         directSellerName = ds?.name || ""
+        directSellerFullName = ds?.fullName || ""
         directSellerId   = ds?._id  || null
         // If still no seller found, try fromUser itself if it's a seller
         if (!directSellerName && fromUserDoc.role === "seller") {
           directSellerName = fromUserDoc.name || ""
+          directSellerFullName = fromUserDoc.fullName || ""
           directSellerId   = fromUserDoc._id
         }
       } else {
         // Seller order: fromUser = the direct seller
         directSellerName = fromUserDoc.name || ""
+        directSellerFullName = fromUserDoc.fullName || ""
         directSellerId   = fromUserDoc._id
       }
 
       // Parent seller = seller above directSeller
       const directSellerDoc = directSellerId
-        ? await User.findById(directSellerId).select("_id name parentId role")
+        ? await User.findById(directSellerId).select("_id name fullName parentId role")
         : null
       const parentSeller = directSellerDoc?.parentId
         ? await findAncestorByRole(directSellerDoc.parentId, "seller")
@@ -576,13 +586,17 @@ export const getMyPPCWallet = async (req, res) => {
         : null
 
       // Always set names (override empty ones)
-      h.chainInfo.directSellerName = directSellerName
-      h.chainInfo.parentSellerName = parentSeller?.name || ""
-      h.chainInfo.distributorName  = distributor?.name  || ""
+      h.chainInfo.directSellerName     = directSellerName
+      h.chainInfo.directSellerFullName = directSellerFullName || directSellerDoc?.fullName || ""
+      h.chainInfo.parentSellerName     = parentSeller?.name || ""
+      h.chainInfo.parentSellerFullName = parentSeller?.fullName || ""
+      h.chainInfo.distributorName      = distributor?.name  || ""
+      h.chainInfo.distributorFullName  = distributor?.fullName || ""
     }
 
     const response = {
       name:           user.name,
+      fullName:       user.fullName || "",
       role:           user.role,
       totalPPCEarned: user.totalPPCEarned || 0,
       totalWithdrawn: user.totalWithdrawn  || 0,
@@ -602,14 +616,18 @@ export const getMyPPCWallet = async (req, res) => {
           sourceLabel,
           percentageShare: h.percentageShare || 50,
           isUserOrder:     Boolean(isFromUser),
-          toUserName:      h.toUser?.name || "",   // ✅ "You" ka actual naam
-          fromUserName:    h.fromUser?.name || "",
-          fromUserFullName: h.fromUser?.fullName || "",
+          toUserName:          h.toUser?.name || "",
+          toUserFullName:      h.toUser?.fullName || "",
+          fromUserName:        h.fromUser?.name || "",
+          fromUserFullName:    h.fromUser?.fullName || "",
           chainInfo: {
-            directSellerName: h.chainInfo?.directSellerName || "",
-            distributorName:  h.chainInfo?.distributorName  || "",
-            parentSellerName: h.chainInfo?.parentSellerName || "",
-            isUserOrder:      h.chainInfo?.isUserOrder      || false,
+            directSellerName:     h.chainInfo?.directSellerName || "",
+            directSellerFullName: h.chainInfo?.directSellerFullName || "",
+            distributorName:      h.chainInfo?.distributorName  || "",
+            distributorFullName:  h.chainInfo?.distributorFullName || "",
+            parentSellerName:     h.chainInfo?.parentSellerName || "",
+            parentSellerFullName: h.chainInfo?.parentSellerFullName || "",
+            isUserOrder:          h.chainInfo?.isUserOrder      || false,
           },
           walletLabel: h.walletType === "userWallet"           ? "User Wallet (50%)"
                      : h.walletType === "sellerWalletAsSeller" ? "Direct Seller Wallet (25%)"
