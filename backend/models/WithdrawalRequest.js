@@ -130,7 +130,13 @@ const withdrawalRequestSchema = new mongoose.Schema(
       default: ""
     },
 
-    // Transaction ID (after payment)
+    // Transaction ID / UTR (after payment)
+    utrNumber: {
+      type: String,
+      trim: true,
+      default: ""
+    },
+
     transactionId: {
       type: String,
       trim: true,
@@ -158,6 +164,7 @@ withdrawalRequestSchema.methods.approve = function (adminId, note = "", transact
   this.approvedAt = new Date()
   this.adminNote = note
   this.transactionId = transactionId
+  this.utrNumber = transactionId
   return this
 }
 

@@ -3124,7 +3124,9 @@ app.get("/api/invoice-settings", protect, async (req, res) => {
       themeColor:     result.invoiceThemeColor   || "#1e293b",
       showLogo:       result.invoiceShowLogo     === "true",
       terms:          result.invoiceTerms        || "",
-      showBehalfInfo: result.invoiceShowBehalfInfo !== "false", // default true
+      showBehalfInfo:    result.invoiceShowBehalfInfo !== "false", // default true
+      showSellerId:      result.invoiceShowSellerId !== "false",   // default true
+      showDistributorId: result.invoiceShowDistributorId !== "false", // default true
       customFields,   // [{label, value, position}]
     })
   } catch (err) {
@@ -3132,21 +3134,23 @@ app.get("/api/invoice-settings", protect, async (req, res) => {
   }
 })
 
-app.post("/api/invoice-settings", protect, allowRoles("admin"), async (req, res) => {
+const handleSaveInvoiceSettings = async (req, res) => {
   try {
     const map = {
-      companyName:    "invoiceCompanyName",
-      tagline:        "invoiceTagline",
-      address:        "invoiceAddress",
-      phone:          "invoicePhone",
-      email:          "invoiceEmail",
-      gst:            "invoiceGST",
-      footer:         "invoiceFooter",
-      logo:           "invoiceLogo",
-      themeColor:     "invoiceThemeColor",
-      showLogo:       "invoiceShowLogo",
-      terms:          "invoiceTerms",
-      showBehalfInfo: "invoiceShowBehalfInfo",
+      companyName:       "invoiceCompanyName",
+      tagline:           "invoiceTagline",
+      address:           "invoiceAddress",
+      phone:             "invoicePhone",
+      email:             "invoiceEmail",
+      gst:               "invoiceGST",
+      footer:            "invoiceFooter",
+      logo:              "invoiceLogo",
+      themeColor:        "invoiceThemeColor",
+      showLogo:          "invoiceShowLogo",
+      terms:             "invoiceTerms",
+      showBehalfInfo:    "invoiceShowBehalfInfo",
+      showSellerId:      "invoiceShowSellerId",
+      showDistributorId: "invoiceShowDistributorId",
     }
     const ops = Object.entries(map).map(([k, dbKey]) => {
       if (req.body[k] === undefined) return null
@@ -3171,7 +3175,10 @@ app.post("/api/invoice-settings", protect, allowRoles("admin"), async (req, res)
   } catch (err) {
     res.status(500).json({ message: err.message })
   }
-})
+}
+
+app.post("/api/invoice-settings", protect, allowRoles("admin"), handleSaveInvoiceSettings)
+app.put("/api/invoice-settings", protect, allowRoles("admin"), handleSaveInvoiceSettings)
 
 app.get("/api/invoice/:orderId", protect, async (req, res) => {
   try {

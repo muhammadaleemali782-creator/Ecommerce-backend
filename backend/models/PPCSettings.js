@@ -51,8 +51,8 @@ const ppcSettingsSchema = new mongoose.Schema(
     
     minimumWithdrawal: {
       type: Number,
-      default: 100,
-      min: 0
+      default: 1,
+      min: 1
     },
 
     // ⭐ Monthly Lifetime Salary Payout Date (Admin can decide any day from 1 to 28)
@@ -154,7 +154,7 @@ ppcSettingsSchema.statics.getSettings = async function () {
     settings = await this.create({
       basePPCValue: 40,
       distributionRates: { direct: 50, parent: 25, distributor: 25 },
-      minimumWithdrawal: 100,
+      minimumWithdrawal: 1,
       levelUpThresholds: { level1: 100, level2: 500, level3: 1000, level4: 5000 },
       levelNames: {
         level0: "Distributor",

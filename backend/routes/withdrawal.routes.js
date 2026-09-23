@@ -27,9 +27,10 @@ router.post("/request", auth, allowRoles("distributor", "seller"), async (req, r
     
     // Check minimum withdrawal limit
     const settings = await PPCSettings.getSettings()
-    if (amount < settings.minimumWithdrawal) {
+    const minPPC = settings?.minimumWithdrawal ?? 1
+    if (amount < minPPC) {
       return res.status(400).json({ 
-        message: `Minimum withdrawal amount is ₹${settings.minimumWithdrawal}` 
+        message: `Minimum withdrawal amount is ${minPPC} PPC` 
       })
     }
     
@@ -181,7 +182,14 @@ router.get("/admin/all", auth, allowRoles("admin"), async (req, res) => {
 router.post("/admin/approve/:id", auth, allowRoles("admin"), async (req, res) => {
   try {
     
-    const { transactionId, note } = req.body
+    const { transactionId, utrNumber, note } = req.body
+    const finalUtr = (utrNumber || transactionId || "").trim()
+
+    if (!finalUtr) {
+      return res.status(400).json({ 
+        message: "Payment UTR / Bank Reference Number is required to approve withdrawal" 
+      })
+    }
     
     const request = await WithdrawalRequest.findById(req.params.id)
     if (!request) {
@@ -218,17 +226,19 @@ router.post("/admin/approve/:id", auth, allowRoles("admin"), async (req, res) =>
     await user.save()
     
     // Approve request
-    request.approve(req.user.id, note || "", transactionId || "")
+    request.approve(req.user.id, note || "", finalUtr)
     await request.save()
     
     console.log("✅ Withdrawal approved:", request._id)
-    console.log(`💰 Paid: ${request.amount} PPC × ₹${lockedRate} × ${lockedPercentage}% = ₹${rupeesPaid.toFixed(2)}`)
+    console.log(`💰 Paid: ${request.amount} PPC × ₹${lockedRate} × ${lockedPercentage}% = ₹${rupeesPaid.toFixed(2)} | UTR: ${finalUtr}`)
     
     res.json({ 
       success: true, 
       message: "Withdrawal approved successfully",
       rupeesPaid: rupeesPaid.toFixed(2),
       lockedRate,
+      utrNumber: finalUtr,
+      transactionId: finalUtr,
       request 
     })
     
