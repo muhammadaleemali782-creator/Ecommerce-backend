@@ -543,33 +543,17 @@ router.post("/sheet-sync", async (req, res) => {
   }
 })
 
-// ⭐ Fix known broken /uploads/ QR URLs to Google Drive links on server startup
-const fixKnownDriveLinks = async () => {
+// Clean any fake/dummy drive links from MongoDB
+const cleanDummyLinks = async () => {
   try {
-    const vivekUser = await User.findOne({ name: "DB001/DS024" })
-    if (vivekUser) {
-      const res1 = await WithdrawalRequest.updateMany(
-        { userId: vivekUser._id, qrCodeUrl: { $regex: /^\/uploads\// } },
-        { qrCodeUrl: "https://drive.google.com/file/d/1-qtU07Pt0PwscZ6lGCDhxmfX3lqwT9wc/view?usp=sharing" }
-      )
-      if (res1.modifiedCount > 0) {
-        console.log(`✅ Migrated ${res1.modifiedCount} requests for Vivek to Google Drive`)
-      }
-    }
-    const anandUser = await User.findOne({ name: "DB001" })
-    if (anandUser) {
-      const res2 = await WithdrawalRequest.updateMany(
-        { userId: anandUser._id, qrCodeUrl: { $regex: /^\/uploads\// } },
-        { qrCodeUrl: "https://drive.google.com/file/d/1TVmN5tWT_puFbTIyUrTsssic4mNPpSK/view?usp=sharing" }
-      )
-      if (res2.modifiedCount > 0) {
-        console.log(`✅ Migrated ${res2.modifiedCount} requests for Anand to Google Drive`)
-      }
-    }
+    await WithdrawalRequest.updateMany(
+      { qrCodeUrl: { $regex: /1-qtU07Pt0PwscZ6lGCDhxmfX3lqwT9wc|1TVmN5tWT_puFbTIyUrTsssic4mNPpSK|^\/uploads\// } },
+      { $set: { qrCodeUrl: "" } }
+    )
   } catch (e) {
-    console.error("Link migration error:", e.message)
+    console.error("Clean dummy links error:", e.message)
   }
 }
-setTimeout(fixKnownDriveLinks, 3000)
+setTimeout(cleanDummyLinks, 2000)
 
 export default router
