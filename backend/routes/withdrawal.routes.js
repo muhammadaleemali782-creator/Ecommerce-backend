@@ -172,7 +172,7 @@ router.post("/request", auth, allowRoles("distributor", "seller"), async (req, r
         body: JSON.stringify({
           action: "CREATE",
           requestId: String(request._id),
-          date: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
+          date: `${new Date().toLocaleDateString("en-IN", { weekday: "long", timeZone: "Asia/Kolkata" })}, ${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`,
           name: user.fullName || user.name,
           userId: user.name,
           role: user.role,
@@ -466,6 +466,71 @@ router.post("/admin/reject/:id", auth, allowRoles("admin"), async (req, res) => 
   } catch (err) {
     console.error("Reject withdrawal error:", err)
     res.status(500).json({ message: "Failed to reject withdrawal" })
+  }
+})
+
+/* =====================================================
+   GOOGLE SHEET TWO-WAY SYNC (Webhook from Google Apps Script)
+   When Admin updates UTR, Status, or Screenshot in Google Sheet,
+   this route updates the withdrawal request on the website.
+===================================================== */
+router.post("/sheet-sync", async (req, res) => {
+  try {
+    const { systemId, utrNumber, status, screenshot, remarks } = req.body
+    if (!systemId) {
+      return res.status(400).json({ message: "systemId is required" })
+    }
+
+    const user = await User.findOne({ name: systemId })
+    if (!user) {
+      return res.status(404).json({ message: `User with system ID ${systemId} not found` })
+    }
+
+    // Find pending or latest withdrawal request
+    let request = await WithdrawalRequest.findOne({ userId: user._id, status: "pending" })
+    if (!request) {
+      request = await WithdrawalRequest.findOne({ userId: user._id }).sort({ createdAt: -1 })
+    }
+    if (!request) {
+      return res.status(404).json({ message: "No withdrawal request found for this user" })
+    }
+
+    const newStatus = (status || "").trim().toLowerCase()
+    
+    // Status change handling
+    if (newStatus === "approved" && request.status !== "approved") {
+      const walletBalance = user[request.walletType] || 0
+      if (request.amount <= walletBalance) {
+        user[request.walletType] = walletBalance - request.amount
+        user.totalWithdrawn = (user.totalWithdrawn || 0) + request.amount
+        await user.save()
+      }
+      request.status = "approved"
+      request.approvedAt = new Date()
+    } else if (newStatus === "rejected" && request.status !== "rejected") {
+      request.status = "rejected"
+      request.rejectedAt = new Date()
+      request.rejectionReason = remarks || "Rejected via Google Sheet"
+    }
+
+    if (utrNumber) {
+      request.transactionId = utrNumber.trim()
+      request.utrNumber = utrNumber.trim()
+    }
+    if (screenshot) {
+      request.paymentProof = screenshot.trim()
+    }
+    if (remarks) {
+      request.adminNote = remarks.trim()
+    }
+
+    await request.save()
+    console.log(`📊 Google Sheet sync: Request ${request._id} (${systemId}) updated: status=${request.status}, utr=${request.transactionId}`)
+
+    res.json({ success: true, message: "Sync successful", request })
+  } catch (err) {
+    console.error("Sheet sync error:", err)
+    res.status(500).json({ message: "Internal server error" })
   }
 })
 
