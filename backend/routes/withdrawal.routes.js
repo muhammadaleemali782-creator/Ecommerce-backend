@@ -115,6 +115,9 @@ router.post("/request", auth, allowRoles("distributor", "seller"), async (req, r
       percentage = 50
     }
 
+    // Calculate locked rupee value
+    const rupeeValue = Number(amount) * (Number(currentRate) || 0) * (Number(percentage) / 100)
+
     // Save QR file to uploads/ folder (zero MongoDB database bloat, just a short URL string)
     let localQrUrl = ""
     if (qrBase64 && typeof qrBase64 === "string" && qrBase64.startsWith("data:image")) {
@@ -124,6 +127,7 @@ router.post("/request", auth, allowRoles("distributor", "seller"), async (req, r
           const ext = matches[1] === "jpeg" ? "jpg" : matches[1]
           const buffer = Buffer.from(matches[2], "base64")
           const filename = `qr-${Date.now()}-${Math.round(Math.random() * 1e6)}.${ext}`
+          if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true })
           const filepath = `${uploadDir}/${filename}`
           fs.writeFileSync(filepath, buffer)
           localQrUrl = `/uploads/${filename}`
