@@ -65,6 +65,10 @@ router.post("/update", auth, allowRoles("admin"), async (req, res) => {
 
     if (minimumWithdrawal !== undefined) settings.minimumWithdrawal = Number(minimumWithdrawal)
 
+    if (req.body.googleSheetWebhookUrl !== undefined) {
+      settings.googleSheetWebhookUrl = String(req.body.googleSheetWebhookUrl || "").trim()
+    }
+
     // ⭐ Monthly Lifetime Salary Payout Date (1 to 28)
     if (req.body.salaryPayoutDay !== undefined) {
       const day = parseInt(req.body.salaryPayoutDay)

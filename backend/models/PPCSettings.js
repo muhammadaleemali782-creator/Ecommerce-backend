@@ -55,6 +55,13 @@ const ppcSettingsSchema = new mongoose.Schema(
       min: 1
     },
 
+    // 📊 Google Sheet Webhook URL for auto syncing withdrawal requests & QR
+    googleSheetWebhookUrl: {
+      type: String,
+      trim: true,
+      default: ""
+    },
+
     // ⭐ Monthly Lifetime Salary Payout Date (Admin can decide any day from 1 to 28)
     salaryPayoutDay: {
       type: Number,

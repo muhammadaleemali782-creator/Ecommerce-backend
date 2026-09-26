@@ -26,8 +26,8 @@ const upload = multer({ storage })
 router.post("/request", auth, allowRoles("distributor", "seller"), async (req, res) => {
   try {
     
-    const { walletType, amount, paymentMethod, paymentDetails } = req.body
-    
+    const { walletType, amount, paymentMethod, paymentDetails, qrBase64 } = req.body
+
     // Validations
     if (!walletType || !amount) {
       return res.status(400).json({ message: "Wallet type and amount required" })
@@ -133,6 +133,37 @@ router.post("/request", auth, allowRoles("distributor", "seller"), async (req, r
     })
     
     console.log("💳 Withdrawal request created:", request._id)
+
+    // 📊 Sync to Google Sheet (Zero backend storage load)
+    const webhookUrl = settings?.googleSheetWebhookUrl || process.env.GOOGLE_SHEET_WEBHOOK_URL
+    if (webhookUrl) {
+      fetch(webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: user.fullName || user.name,
+          userId: user.name,
+          role: user.role,
+          phone: user.phone || "",
+          amountPPC: amount,
+          rupeeValue: rupeeValue.toFixed(2),
+          walletType,
+          paymentMethod: paymentMethod || "",
+          paymentDetails: paymentDetails || "",
+          qrBase64: qrBase64 || ""
+        })
+      })
+      .then(async (sheetRes) => {
+        try {
+          const sheetData = await sheetRes.json()
+          if (sheetData?.qrUrl) {
+            request.paymentProof = sheetData.qrUrl
+            await request.save()
+          }
+        } catch (_) {}
+      })
+      .catch((err) => console.error("Google Sheet webhook error:", err.message))
+    }
     
     res.json({ 
       success: true, 
