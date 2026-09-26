@@ -118,31 +118,7 @@ router.post("/request", auth, allowRoles("distributor", "seller"), async (req, r
     // Calculate locked rupee value
     const rupeeValue = Number(amount) * (Number(currentRate) || 0) * (Number(percentage) / 100)
 
-    // Save QR file to uploads/ folder (zero MongoDB database bloat, just a short URL string)
-    let localQrUrl = ""
-    if (qrBase64 && typeof qrBase64 === "string" && qrBase64.startsWith("data:image")) {
-      try {
-        const matches = qrBase64.match(/^data:image\/([a-zA-Z0-9]+);base64,(.+)$/)
-        if (matches) {
-          const ext = matches[1] === "jpeg" ? "jpg" : matches[1]
-          const buffer = Buffer.from(matches[2], "base64")
-          const filename = `qr-${Date.now()}-${Math.round(Math.random() * 1e6)}.${ext}`
-          if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true })
-          const filepath = `${uploadDir}/${filename}`
-          fs.writeFileSync(filepath, buffer)
-          localQrUrl = `/uploads/${filename}`
-        }
-      } catch (err) {
-        console.error("Local QR save error:", err.message)
-      }
-    }
-
-    // QR: Store base64 directly in MongoDB so Render restarts never lose it
-    const permanentQr = (qrBase64 && typeof qrBase64 === "string" && qrBase64.startsWith("data:image")) 
-      ? qrBase64 
-      : (localQrUrl || "")
-
-    // Create request
+    // Create request with zero local storage
     const request = await WithdrawalRequest.create({
       userId: user._id,
       userRole: user.role,
@@ -154,16 +130,15 @@ router.post("/request", auth, allowRoles("distributor", "seller"), async (req, r
       rupeeValueAtRequest: rupeeValue,       // ⭐ rupee value lock
       paymentMethod: paymentMethod || "",
       paymentDetails: paymentDetails || "",
-      qrCodeUrl: permanentQr,
+      qrCodeUrl: "",
       status: "pending"
     })
     
     console.log("💳 Withdrawal request created:", request._id)
 
-    // 📊 Sync to Google Sheet (Zero backend storage load)
+    // 📊 Save QR to Google Drive & record in Google Sheet
     const webhookUrl = settings?.googleSheetWebhookUrl || process.env.GOOGLE_SHEET_WEBHOOK_URL
     if (webhookUrl) {
-      const publicQr = localQrUrl ? `${req.protocol}://${req.get("host")}${localQrUrl}` : ""
       const originWallet = 
         walletType === "userWalletAsSeller" ? "User Wallet" :
         walletType === "sellerWalletAsSeller" ? "Direct Seller Wallet" :
@@ -171,41 +146,45 @@ router.post("/request", auth, allowRoles("distributor", "seller"), async (req, r
         walletType === "distSellerWallet" ? "Distributor's Direct Seller Wallet" :
         walletType === "distributorWallet" ? "Distributor Wallet" : walletType
 
-      fetch(webhookUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "CREATE",
-          requestId: String(request._id),
-          date: `${new Date().toLocaleDateString("en-IN", { weekday: "long", timeZone: "Asia/Kolkata" })}, ${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`,
-          name: user.fullName || user.name,
-          userId: user.name,
-          role: user.role,
-          phone: user.phone || "",
-          email: user.email || "",
-          originWallet,
-          amountPPC: amount,
-          rupeeValue: rupeeValue.toFixed(2),
-          paymentMethod: paymentMethod || "",
-          paymentDetails: paymentDetails || "",
-          qrCodeUrl: publicQr,
-          qrBase64: qrBase64 || "",
-          utrNumber: "",
-          status: "PENDING",
-          screenshot: "",
-          remarks: ""
+      try {
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 6000)
+
+        const sheetRes = await fetch(webhookUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          signal: controller.signal,
+          body: JSON.stringify({
+            action: "CREATE",
+            requestId: String(request._id),
+            date: `${new Date().toLocaleDateString("en-IN", { weekday: "long", timeZone: "Asia/Kolkata" })}, ${new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}`,
+            name: user.fullName || user.name,
+            userId: user.name,
+            role: user.role,
+            phone: user.phone || "",
+            email: user.email || "",
+            originWallet,
+            amountPPC: amount,
+            rupeeValue: rupeeValue.toFixed(2),
+            paymentMethod: paymentMethod || "",
+            paymentDetails: paymentDetails || "",
+            qrCodeUrl: "",
+            qrBase64: qrBase64 || "",
+            utrNumber: "",
+            status: "PENDING",
+            screenshot: "",
+            remarks: ""
+          })
         })
-      })
-      .then(async (sheetRes) => {
-        try {
-          const sheetData = await sheetRes.json()
-          if (sheetData?.qrUrl) {
-            request.qrCodeUrl = sheetData.qrUrl
-            await request.save()
-          }
-        } catch (_) {}
-      })
-      .catch((err) => console.error("Google Sheet webhook error:", err.message))
+        clearTimeout(timeoutId)
+        const sheetData = await sheetRes.json()
+        if (sheetData?.qrUrl) {
+          request.qrCodeUrl = sheetData.qrUrl
+          await request.save()
+        }
+      } catch (err) {
+        console.error("Google Sheet webhook error:", err.message)
+      }
     }
     
     res.json({ 
