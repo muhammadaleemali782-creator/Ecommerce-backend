@@ -115,8 +115,24 @@ router.post("/request", auth, allowRoles("distributor", "seller"), async (req, r
       percentage = 50
     }
 
-    const rupeeValue = amount * currentRate * (percentage / 100)
-    
+    // Save QR file to uploads/ folder (zero MongoDB database bloat, just a short URL string)
+    let localQrUrl = ""
+    if (qrBase64 && typeof qrBase64 === "string" && qrBase64.startsWith("data:image")) {
+      try {
+        const matches = qrBase64.match(/^data:image\/([a-zA-Z0-9]+);base64,(.+)$/)
+        if (matches) {
+          const ext = matches[1] === "jpeg" ? "jpg" : matches[1]
+          const buffer = Buffer.from(matches[2], "base64")
+          const filename = `qr-${Date.now()}-${Math.round(Math.random() * 1e6)}.${ext}`
+          const filepath = `${uploadDir}/${filename}`
+          fs.writeFileSync(filepath, buffer)
+          localQrUrl = `/uploads/${filename}`
+        }
+      } catch (err) {
+        console.error("Local QR save error:", err.message)
+      }
+    }
+
     // Create request
     const request = await WithdrawalRequest.create({
       userId: user._id,
@@ -129,6 +145,7 @@ router.post("/request", auth, allowRoles("distributor", "seller"), async (req, r
       rupeeValueAtRequest: rupeeValue,       // ⭐ rupee value lock
       paymentMethod: paymentMethod || "",
       paymentDetails: paymentDetails || "",
+      qrCodeUrl: localQrUrl,
       status: "pending"
     })
     
@@ -137,6 +154,7 @@ router.post("/request", auth, allowRoles("distributor", "seller"), async (req, r
     // 📊 Sync to Google Sheet (Zero backend storage load)
     const webhookUrl = settings?.googleSheetWebhookUrl || process.env.GOOGLE_SHEET_WEBHOOK_URL
     if (webhookUrl) {
+      const publicQr = localQrUrl ? `${req.protocol}://${req.get("host")}${localQrUrl}` : ""
       fetch(webhookUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -150,13 +168,14 @@ router.post("/request", auth, allowRoles("distributor", "seller"), async (req, r
           walletType,
           paymentMethod: paymentMethod || "",
           paymentDetails: paymentDetails || "",
+          qrCodeUrl: publicQr,
           qrBase64: qrBase64 || ""
         })
       })
       .then(async (sheetRes) => {
         try {
           const sheetData = await sheetRes.json()
-          if (sheetData?.qrUrl) {
+          if (sheetData?.qrUrl && !request.qrCodeUrl) {
             request.qrCodeUrl = sheetData.qrUrl
             await request.save()
           }
