@@ -157,7 +157,7 @@ router.post("/request", auth, allowRoles("distributor", "seller"), async (req, r
         try {
           const sheetData = await sheetRes.json()
           if (sheetData?.qrUrl) {
-            request.paymentProof = sheetData.qrUrl
+            request.qrCodeUrl = sheetData.qrUrl
             await request.save()
           }
         } catch (_) {}

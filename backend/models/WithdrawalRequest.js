@@ -143,8 +143,15 @@ const withdrawalRequestSchema = new mongoose.Schema(
       default: ""
     },
 
-    // Payment screenshot / receipt URL or Google Drive link
+    // Payment screenshot / receipt URL or Google Drive link (Admin slip)
     paymentProof: {
+      type: String,
+      trim: true,
+      default: ""
+    },
+
+    // User's uploaded UPI QR / payment photo link (saved on Google Drive)
+    qrCodeUrl: {
       type: String,
       trim: true,
       default: ""
