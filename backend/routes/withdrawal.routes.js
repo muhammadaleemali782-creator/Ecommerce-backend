@@ -1,4 +1,6 @@
 import express from "express"
+import multer from "multer"
+import fs from "fs"
 import auth from "../middleware/auth.js"
 import allowRoles from "../middleware/allowRoles.js"
 import WithdrawalRequest from "../models/WithdrawalRequest.js"
@@ -7,6 +9,16 @@ import User from "../models/User.js"
 import Commission from "../commission/commission.model.js"
 
 const router = express.Router()
+
+/* ── Lightweight Upload setup for Payment Proof / Receipts ── */
+const uploadDir = "uploads"
+if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir)
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, uploadDir),
+  filename: (req, file, cb) => cb(null, "proof-" + Date.now() + "-" + file.originalname.replace(/\s+/g, "_"))
+})
+const upload = multer({ storage })
 
 /* =====================================================
    USER → CREATE WITHDRAWAL REQUEST
@@ -155,6 +167,41 @@ router.get("/my-requests", auth, allowRoles("distributor", "seller"), async (req
 })
 
 /* =====================================================
+   ADMIN → UPLOAD PAYMENT PROOF SCREENSHOT
+===================================================== */
+router.post("/admin/upload-proof", auth, allowRoles("admin"), upload.single("proof"), (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: "No file uploaded" })
+    }
+    const fileUrl = `/uploads/${req.file.filename}`
+    res.json({ success: true, url: fileUrl })
+  } catch (err) {
+    console.error("Proof upload error:", err)
+    res.status(500).json({ message: "Failed to upload payment proof" })
+  }
+})
+
+/* =====================================================
+   ADMIN → UPDATE / ATTACH PAYMENT PROOF
+===================================================== */
+router.post("/admin/update-proof/:id", auth, allowRoles("admin"), async (req, res) => {
+  try {
+    const { paymentProof } = req.body
+    const request = await WithdrawalRequest.findById(req.params.id)
+    if (!request) {
+      return res.status(404).json({ message: "Request not found" })
+    }
+    request.paymentProof = (paymentProof || "").trim()
+    await request.save()
+    res.json({ success: true, message: "Payment proof updated", request })
+  } catch (err) {
+    console.error("Update proof error:", err)
+    res.status(500).json({ message: "Failed to update payment proof" })
+  }
+})
+
+/* =====================================================
    ADMIN → ALL WITHDRAWAL REQUESTS
 ===================================================== */
 router.get("/admin/all", auth, allowRoles("admin"), async (req, res) => {
@@ -165,7 +212,7 @@ router.get("/admin/all", auth, allowRoles("admin"), async (req, res) => {
     const query = status ? { status } : {}
     
     const requests = await WithdrawalRequest.find(query)
-      .populate("userId", "name email role phone")
+      .populate("userId", "name fullName email role phone")
       .sort({ createdAt: -1 })
     
     res.json(requests)
@@ -182,7 +229,7 @@ router.get("/admin/all", auth, allowRoles("admin"), async (req, res) => {
 router.post("/admin/approve/:id", auth, allowRoles("admin"), async (req, res) => {
   try {
     
-    const { transactionId, utrNumber, note } = req.body
+    const { transactionId, utrNumber, note, paymentProof } = req.body
     const finalUtr = (utrNumber || transactionId || "").trim()
 
     if (!finalUtr) {
@@ -226,7 +273,7 @@ router.post("/admin/approve/:id", auth, allowRoles("admin"), async (req, res) =>
     await user.save()
     
     // Approve request
-    request.approve(req.user.id, note || "", finalUtr)
+    request.approve(req.user.id, note || "", finalUtr, (paymentProof || "").trim())
     await request.save()
     
     console.log("✅ Withdrawal approved:", request._id)

@@ -141,6 +141,13 @@ const withdrawalRequestSchema = new mongoose.Schema(
       type: String,
       trim: true,
       default: ""
+    },
+
+    // Payment screenshot / receipt URL or Google Drive link
+    paymentProof: {
+      type: String,
+      trim: true,
+      default: ""
     }
   },
   {
@@ -158,13 +165,14 @@ withdrawalRequestSchema.index({ status: 1, createdAt: -1 })
    HELPER METHODS
 ===================================================== */
 
-withdrawalRequestSchema.methods.approve = function (adminId, note = "", transactionId = "") {
+withdrawalRequestSchema.methods.approve = function (adminId, note = "", transactionId = "", paymentProof = "") {
   this.status = "approved"
   this.approvedBy = adminId
   this.approvedAt = new Date()
   this.adminNote = note
   this.transactionId = transactionId
   this.utrNumber = transactionId
+  if (paymentProof) this.paymentProof = paymentProof
   return this
 }
 
