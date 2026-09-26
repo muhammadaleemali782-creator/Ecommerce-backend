@@ -10,15 +10,11 @@ import Commission from "../commission/commission.model.js"
 
 const router = express.Router()
 
-/* ── Lightweight Upload setup for Payment Proof / Receipts ── */
-const uploadDir = "uploads"
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir)
-
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadDir),
-  filename: (req, file, cb) => cb(null, "proof-" + Date.now() + "-" + file.originalname.replace(/\s+/g, "_"))
+/* ── Lightweight Upload setup for Payment Proof / Receipts (In-memory, zero local disk bloat) ── */
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }
 })
-const upload = multer({ storage })
 
 /* =====================================================
    USER → CREATE WITHDRAWAL REQUEST
@@ -222,13 +218,39 @@ router.get("/my-requests", auth, allowRoles("distributor", "seller"), async (req
 /* =====================================================
    ADMIN → UPLOAD PAYMENT PROOF SCREENSHOT
 ===================================================== */
-router.post("/admin/upload-proof", auth, allowRoles("admin"), upload.single("proof"), (req, res) => {
+router.post("/admin/upload-proof", auth, allowRoles("admin"), upload.single("proof"), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ message: "No file uploaded" })
     }
-    const fileUrl = `/uploads/${req.file.filename}`
-    res.json({ success: true, url: fileUrl })
+    const mime = req.file.mimetype || "image/jpeg"
+    const base64 = `data:${mime};base64,${req.file.buffer.toString("base64")}`
+    
+    // Save to Google Drive via Apps Script webhook
+    const settings = await PPCSettings.findOne().lean()
+    const webhookUrl = settings?.googleSheetWebhookUrl || process.env.GOOGLE_SHEET_WEBHOOK_URL
+    if (webhookUrl) {
+      try {
+        const sheetRes = await fetch(webhookUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "UPLOAD_FILE",
+            fileBase64: base64,
+            fileName: `Slip-${Date.now()}`
+          })
+        })
+        const sheetData = await sheetRes.json()
+        if (sheetData?.url) {
+          return res.json({ success: true, url: sheetData.url })
+        }
+      } catch (err) {
+        console.error("Drive upload webhook error:", err.message)
+      }
+    }
+    
+    // Fallback if webhook unreachable: return compressed base64
+    res.json({ success: true, url: base64 })
   } catch (err) {
     console.error("Proof upload error:", err)
     res.status(500).json({ message: "Failed to upload payment proof" })
