@@ -137,6 +137,11 @@ router.post("/request", auth, allowRoles("distributor", "seller"), async (req, r
       }
     }
 
+    // QR: Store base64 directly in MongoDB so Render restarts never lose it
+    const permanentQr = (qrBase64 && typeof qrBase64 === "string" && qrBase64.startsWith("data:image")) 
+      ? qrBase64 
+      : (localQrUrl || "")
+
     // Create request
     const request = await WithdrawalRequest.create({
       userId: user._id,
@@ -149,7 +154,7 @@ router.post("/request", auth, allowRoles("distributor", "seller"), async (req, r
       rupeeValueAtRequest: rupeeValue,       // ⭐ rupee value lock
       paymentMethod: paymentMethod || "",
       paymentDetails: paymentDetails || "",
-      qrCodeUrl: localQrUrl,
+      qrCodeUrl: permanentQr,
       status: "pending"
     })
     
@@ -194,7 +199,7 @@ router.post("/request", auth, allowRoles("distributor", "seller"), async (req, r
       .then(async (sheetRes) => {
         try {
           const sheetData = await sheetRes.json()
-          if (sheetData?.qrUrl && !request.qrCodeUrl) {
+          if (sheetData?.qrUrl) {
             request.qrCodeUrl = sheetData.qrUrl
             await request.save()
           }
@@ -524,6 +529,10 @@ router.post("/sheet-sync", async (req, res) => {
       request.adminNote = remarks.trim()
     }
 
+    if (req.body.qrCodeUrl || req.body.qrUrl) {
+      request.qrCodeUrl = (req.body.qrCodeUrl || req.body.qrUrl).trim()
+    }
+
     await request.save()
     console.log(`📊 Google Sheet sync: Request ${request._id} (${systemId}) updated: status=${request.status}, utr=${request.transactionId}`)
 
@@ -533,5 +542,34 @@ router.post("/sheet-sync", async (req, res) => {
     res.status(500).json({ message: "Internal server error" })
   }
 })
+
+// ⭐ Fix known broken /uploads/ QR URLs to Google Drive links on server startup
+const fixKnownDriveLinks = async () => {
+  try {
+    const vivekUser = await User.findOne({ name: "DB001/DS024" })
+    if (vivekUser) {
+      const res1 = await WithdrawalRequest.updateMany(
+        { userId: vivekUser._id, qrCodeUrl: { $regex: /^\/uploads\// } },
+        { qrCodeUrl: "https://drive.google.com/file/d/1-qtU07Pt0PwscZ6lGCDhxmfX3lqwT9wc/view?usp=sharing" }
+      )
+      if (res1.modifiedCount > 0) {
+        console.log(`✅ Migrated ${res1.modifiedCount} requests for Vivek to Google Drive`)
+      }
+    }
+    const anandUser = await User.findOne({ name: "DB001" })
+    if (anandUser) {
+      const res2 = await WithdrawalRequest.updateMany(
+        { userId: anandUser._id, qrCodeUrl: { $regex: /^\/uploads\// } },
+        { qrCodeUrl: "https://drive.google.com/file/d/1TVmN5tWT_puFbTIyUrTsssic4mNPpSK/view?usp=sharing" }
+      )
+      if (res2.modifiedCount > 0) {
+        console.log(`✅ Migrated ${res2.modifiedCount} requests for Anand to Google Drive`)
+      }
+    }
+  } catch (e) {
+    console.error("Link migration error:", e.message)
+  }
+}
+setTimeout(fixKnownDriveLinks, 3000)
 
 export default router
