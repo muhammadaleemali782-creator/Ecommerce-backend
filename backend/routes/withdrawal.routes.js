@@ -159,21 +159,36 @@ router.post("/request", auth, allowRoles("distributor", "seller"), async (req, r
     const webhookUrl = settings?.googleSheetWebhookUrl || process.env.GOOGLE_SHEET_WEBHOOK_URL
     if (webhookUrl) {
       const publicQr = localQrUrl ? `${req.protocol}://${req.get("host")}${localQrUrl}` : ""
+      const originWallet = 
+        walletType === "userWalletAsSeller" ? "User Wallet" :
+        walletType === "sellerWalletAsSeller" ? "Direct Seller Wallet" :
+        walletType === "sellerWallet" ? "Direct Seller Wallet" :
+        walletType === "distSellerWallet" ? "Distributor's Direct Seller Wallet" :
+        walletType === "distributorWallet" ? "Distributor Wallet" : walletType
+
       fetch(webhookUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          action: "CREATE",
+          requestId: String(request._id),
+          date: new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
           name: user.fullName || user.name,
           userId: user.name,
           role: user.role,
           phone: user.phone || "",
+          email: user.email || "",
+          originWallet,
           amountPPC: amount,
           rupeeValue: rupeeValue.toFixed(2),
-          walletType,
           paymentMethod: paymentMethod || "",
           paymentDetails: paymentDetails || "",
           qrCodeUrl: publicQr,
-          qrBase64: qrBase64 || ""
+          qrBase64: qrBase64 || "",
+          utrNumber: "",
+          status: "PENDING",
+          screenshot: "",
+          remarks: ""
         })
       })
       .then(async (sheetRes) => {
@@ -248,6 +263,31 @@ router.post("/admin/update-proof/:id", auth, allowRoles("admin"), async (req, re
     }
     request.paymentProof = (paymentProof || "").trim()
     await request.save()
+
+    // 📊 Sync proof to Google Sheet
+    try {
+      const settings = await PPCSettings.getSettings()
+      const webhookUrl = settings?.googleSheetWebhookUrl || process.env.GOOGLE_SHEET_WEBHOOK_URL
+      if (webhookUrl) {
+        const publicProof = paymentProof 
+          ? (paymentProof.startsWith("http") ? paymentProof : `${req.protocol}://${req.get("host")}${paymentProof}`)
+          : ""
+        fetch(webhookUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "UPDATE",
+            requestId: String(request._id),
+            systemId: "",
+            utrNumber: request.transactionId || request.utrNumber || "",
+            status: request.status.toUpperCase(),
+            screenshot: publicProof,
+            remarks: request.adminNote || ""
+          })
+        }).catch(err => console.error("Sheet proof sync error:", err.message))
+      }
+    } catch (_) {}
+
     res.json({ success: true, message: "Payment proof updated", request })
   } catch (err) {
     console.error("Update proof error:", err)
@@ -332,6 +372,30 @@ router.post("/admin/approve/:id", auth, allowRoles("admin"), async (req, res) =>
     
     console.log("✅ Withdrawal approved:", request._id)
     console.log(`💰 Paid: ${request.amount} PPC × ₹${lockedRate} × ${lockedPercentage}% = ₹${rupeesPaid.toFixed(2)} | UTR: ${finalUtr}`)
+
+    // 📊 Sync approval to Google Sheet
+    try {
+      const settings = await PPCSettings.getSettings()
+      const webhookUrl = settings?.googleSheetWebhookUrl || process.env.GOOGLE_SHEET_WEBHOOK_URL
+      if (webhookUrl) {
+        const publicProof = (paymentProof || "").trim() 
+          ? ((paymentProof || "").startsWith("http") ? paymentProof : `${req.protocol}://${req.get("host")}${paymentProof}`)
+          : ""
+        fetch(webhookUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "UPDATE",
+            requestId: String(request._id),
+            systemId: user.name,
+            utrNumber: finalUtr,
+            status: "APPROVED",
+            screenshot: publicProof,
+            remarks: note || "PAYMENT DONE"
+          })
+        }).catch(err => console.error("Sheet approve sync error:", err.message))
+      }
+    } catch (_) {}
     
     res.json({ 
       success: true, 
@@ -371,6 +435,27 @@ router.post("/admin/reject/:id", auth, allowRoles("admin"), async (req, res) => 
     await request.save()
     
     console.log("❌ Withdrawal rejected:", request._id)
+
+    // 📊 Sync rejection to Google Sheet
+    try {
+      const settings = await PPCSettings.getSettings()
+      const webhookUrl = settings?.googleSheetWebhookUrl || process.env.GOOGLE_SHEET_WEBHOOK_URL
+      if (webhookUrl) {
+        fetch(webhookUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "UPDATE",
+            requestId: String(request._id),
+            systemId: "",
+            utrNumber: "",
+            status: "REJECTED",
+            screenshot: "",
+            remarks: reason || "REJECTED BY ADMIN"
+          })
+        }).catch(err => console.error("Sheet reject sync error:", err.message))
+      }
+    } catch (_) {}
     
     res.json({ 
       success: true, 
