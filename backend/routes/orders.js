@@ -450,6 +450,7 @@ router.get("/distributor", protect, allowRoles("distributor"), async (req, res) 
       .populate("userId",        "name fullName email role phone")
       .populate("distributorId", "name fullName email role phone")
       .sort({ createdAt: -1 })
+      .lean()
     res.json(orders)
   } catch (err) { res.status(500).json({ msg: err.message }) }
 })
@@ -473,10 +474,11 @@ router.get("/mine", protect, allowRoles("seller", "user"), async (req, res) => {
       .populate("userId",        "name fullName email role phone")
       .populate("distributorId", "name fullName email role phone")
       .sort({ createdAt: -1 })
+      .lean()
 
     // ⭐ Note visibility filter — agar noteVisible false hai to hide karo
     const orders = rawOrders.map(o => {
-      const obj = o.toObject()
+      const obj = { ...o }
       if (!obj.distributorNoteVisible) {
         obj.distributorNote = ""
         obj.distributorRejectedNote = ""

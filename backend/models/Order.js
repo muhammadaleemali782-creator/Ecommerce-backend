@@ -67,4 +67,12 @@ const orderSchema = new mongoose.Schema(
   { timestamps: true }
 )
 
+/* ── Compound Indexes for Fast Dashboard & Order Queries ── */
+orderSchema.index({ distributorId: 1, createdAt: -1 })
+orderSchema.index({ sellerId: 1, createdAt: -1 })
+orderSchema.index({ userId: 1, createdAt: -1 })
+orderSchema.index({ placedById: 1, createdAt: -1 })
+orderSchema.index({ onBehalfOfId: 1, createdAt: -1 })
+orderSchema.index({ status: 1, createdAt: -1 })
+
 export default mongoose.model("Order", orderSchema)
