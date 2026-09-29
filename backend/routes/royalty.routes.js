@@ -4,6 +4,7 @@ import allowRoles from "../middleware/allowRoles.js"
 import { RoyaltyPool, RoyaltyDistribution } from "../models/RoyaltyPool.js"
 import User from "../models/User.js"
 import PPCSettings from "../models/PPCSettings.js"
+import Commission from "../commission/commission.model.js"
 
 const router = express.Router()
 
@@ -18,7 +19,13 @@ router.get("/status", protect, allowRoles("admin", "distributor"), async (req, r
     const distributors = await User.find({ role: "distributor", isDeleted: { $ne: true }, isBlocked: { $ne: true } })
       .select("name fullName email phone distributorWallet sellerWallet createdAt")
 
-    const totalPPC = pool.currentCycle.totalCompanyPPC || 0
+    // Accurately sync total company PPC from actual company distributor commissions
+    const distComms = await Commission.aggregate([
+      { $match: { positionType: "distributor" } },
+      { $group: { _id: null, totalPPC: { $sum: "$ppcCount" } } }
+    ])
+    const totalPPC = distComms[0]?.totalPPC ?? (pool.currentCycle.totalCompanyPPC || 0)
+    pool.currentCycle.totalCompanyPPC = totalPPC
     const rsPerPPC = pool.poolMultiplier ?? 10
     const poolRupees = totalPPC * rsPerPPC
     const poolPPC = rate > 0 ? (poolRupees / rate) : 0
@@ -114,7 +121,12 @@ router.post("/disburse", protect, allowRoles("admin"), async (req, res) => {
       return res.status(400).json({ success: false, message: "No active distributors found to disburse royalty." })
     }
 
-    const totalPPC = pool.currentCycle.totalCompanyPPC || 0
+    const distComms = await Commission.aggregate([
+      { $match: { positionType: "distributor" } },
+      { $group: { _id: null, totalPPC: { $sum: "$ppcCount" } } }
+    ])
+    const totalPPC = distComms[0]?.totalPPC ?? (pool.currentCycle.totalCompanyPPC || 0)
+    pool.currentCycle.totalCompanyPPC = totalPPC
     const rsPerPPC = pool.poolMultiplier ?? 10
     const poolRupees = totalPPC * rsPerPPC
     const poolPPC = rate > 0 ? (poolRupees / rate) : 0
