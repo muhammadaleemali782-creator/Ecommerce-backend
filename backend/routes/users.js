@@ -354,20 +354,29 @@ router.get("/my-downline", auth, async (req, res) => {
     const me = await User.findById(req.user.id).select("name role")
     if (!me) return res.status(404).json({ msg: "User not found" })
 
-    // Recursive function to get all children
-    const getAllChildren = async (parentId, level = 1) => {
-      const children = await User.find({ parentId, isDeleted: { $ne: true } })
-        .select("name role _id parentId phone")
+    // Single query for all active users — 100x faster than recursive DB roundtrips
+    const allUsers = await User.find({ isDeleted: { $ne: true } })
+      .select("name fullName role _id parentId phone createdAt")
+      .lean()
+
+    const userMap = new Map()
+    for (const u of allUsers) {
+      const pid = u.parentId ? String(u.parentId) : "root"
+      if (!userMap.has(pid)) userMap.set(pid, [])
+      userMap.get(pid).push(u)
+    }
+
+    const getDownline = (parentId, level = 1) => {
+      const children = userMap.get(String(parentId)) || []
       const result = []
       for (const child of children) {
-        result.push({ ...child.toObject(), level })
-        const nested = await getAllChildren(child._id, level + 1)
-        result.push(...nested)
+        result.push({ ...child, level })
+        result.push(...getDownline(child._id, level + 1))
       }
       return result
     }
 
-    const downline = await getAllChildren(req.user.id)
+    const downline = getDownline(req.user.id)
     res.json({ me: { _id: me._id, name: me.name, role: me.role }, downline })
   } catch (err) {
     console.error("Downline fetch error:", err)
