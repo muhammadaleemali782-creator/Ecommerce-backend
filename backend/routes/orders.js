@@ -445,12 +445,15 @@ router.put("/reject/:id", protect, async (req, res) => {
 ═══════════════════════════════════════════════ */
 router.get("/distributor", protect, allowRoles("distributor"), async (req, res) => {
   try {
-    const orders = await Order.find({ distributorId: req.user.id })
+    const limit = req.query.all === "true" ? 0 : Math.min(200, Math.max(10, parseInt(req.query.limit) || 50))
+    let q = Order.find({ distributorId: req.user.id })
       .populate("sellerId",      "name fullName email role phone")
       .populate("userId",        "name fullName email role phone")
       .populate("distributorId", "name fullName email role phone")
       .sort({ createdAt: -1 })
       .lean()
+    if (limit > 0) q = q.limit(limit)
+    const orders = await q
     res.json(orders)
   } catch (err) { res.status(500).json({ msg: err.message }) }
 })
@@ -542,9 +545,8 @@ router.get("/team", protect, allowRoles("seller", "distributor"), async (req, re
     const downline = getDownline(me)
     const dlIds = downline.map(u => u._id)
 
-    if (dlIds.length === 0) return res.json({ orders: [], downline: [] })
-
-    const orders = await Order.find({
+    const limit = req.query.all === "true" ? 0 : Math.min(200, Math.max(10, parseInt(req.query.limit) || 50))
+    let q = Order.find({
       $or: [
         { sellerId: { $in: dlIds } },
         { userId:   { $in: dlIds } },
@@ -553,8 +555,10 @@ router.get("/team", protect, allowRoles("seller", "distributor"), async (req, re
     .populate("sellerId", "name role")
     .populate("userId", "name role")
     .sort({ createdAt: -1 })
-    .limit(200)
     .lean()
+
+    if (limit > 0) q = q.limit(limit)
+    const orders = await q
 
     res.json({ orders, downline })
   } catch (err) {
