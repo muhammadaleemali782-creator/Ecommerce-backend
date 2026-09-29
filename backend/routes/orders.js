@@ -154,11 +154,15 @@ router.post("/", protect, async (req, res) => {
 ═══════════════════════════════════════════════ */
 router.get("/pending", protect, allowRoles("distributor"), async (req, res) => {
   try {
-    const orders = await Order.find({ distributorId: req.user.id, status: "pending" })
+    const limit = req.query.all === "true" ? 0 : Math.min(200, Math.max(10, parseInt(req.query.limit) || 50))
+    let q = Order.find({ distributorId: req.user.id, status: "pending" })
       .populate("sellerId",      "name fullName email role phone")
       .populate("userId",        "name fullName email role phone")
       .populate("distributorId", "name fullName email role phone")
       .sort({ createdAt: -1 })
+      .lean()
+    if (limit > 0) q = q.limit(limit)
+    const orders = await q
     res.json(orders)
   } catch (err) { res.status(500).json({ msg: err.message }) }
 })

@@ -69,6 +69,7 @@ const orderSchema = new mongoose.Schema(
 
 /* ── Compound Indexes for Fast Dashboard & Order Queries ── */
 orderSchema.index({ distributorId: 1, createdAt: -1 })
+orderSchema.index({ distributorId: 1, status: 1, createdAt: -1 })
 orderSchema.index({ sellerId: 1, createdAt: -1 })
 orderSchema.index({ userId: 1, createdAt: -1 })
 orderSchema.index({ placedById: 1, createdAt: -1 })

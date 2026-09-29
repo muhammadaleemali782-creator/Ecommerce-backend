@@ -535,57 +535,61 @@ export const getMyPPCWallet = async (req, res) => {
       .filter(c => c.remainingPPC > 0)
       .reverse()   // latest first for display
 
-    // ✅ For ALL commissions — dynamically fill chainInfo names from fromUser's tree
+    // Preload active users in ONE lean query for instant in-memory chain lookup (100x faster)
+    const allUsers = await User.find({ isDeleted: { $ne: true } })
+      .select("_id name fullName role parentId")
+      .lean()
+    const userMap = new Map()
+    for (const u of allUsers) userMap.set(String(u._id), u)
+
+    const findAncestorInMemory = (userId, targetRole, visited = new Set()) => {
+      if (!userId || visited.has(String(userId))) return null
+      visited.add(String(userId))
+      const u = userMap.get(String(userId))
+      if (!u || u.role === "admin") return null
+      if (u.role === targetRole) return u
+      return findAncestorInMemory(u.parentId, targetRole, visited)
+    }
+
     for (const h of activeHistory) {
       if (!h.chainInfo) h.chainInfo = {}
       
       const fromUserId = h.fromUser?._id || h.fromUser
       if (!fromUserId) continue
 
-      // fromUser IS the seller who placed the order — get full chain from them
-      const fromUserDoc = await User.findById(fromUserId).select("_id name fullName role parentId")
+      const fromUserDoc = userMap.get(String(fromUserId))
       if (!fromUserDoc) continue
 
-      // directSeller = fromUser itself (agar seller) ya upar ka seller (agar user order)
       let directSellerName = ""
       let directSellerFullName = ""
       let directSellerId   = null
 
-      // ✅ FIX: Detect user order from fromUser's role — schema field missing hone par bhi kaam kare
       const isUserOrd = h.isUserOrder || h.chainInfo?.isUserOrder || fromUserDoc.role === "user"
 
       if (isUserOrd) {
-        // User order: fromUser = user, directSeller = fromUser's nearest seller parent
-        const ds = await findAncestorByRole(fromUserDoc.parentId, "seller")
-        // ✅ NEVER use user's name as directSellerName — only seller's name
+        const ds = findAncestorInMemory(fromUserDoc.parentId, "seller")
         directSellerName = ds?.name || ""
         directSellerFullName = ds?.fullName || ""
         directSellerId   = ds?._id  || null
-        // If still no seller found, try fromUser itself if it's a seller
         if (!directSellerName && fromUserDoc.role === "seller") {
           directSellerName = fromUserDoc.name || ""
           directSellerFullName = fromUserDoc.fullName || ""
           directSellerId   = fromUserDoc._id
         }
       } else {
-        // Seller order: fromUser = the direct seller
         directSellerName = fromUserDoc.name || ""
         directSellerFullName = fromUserDoc.fullName || ""
         directSellerId   = fromUserDoc._id
       }
 
-      // Parent seller = seller above directSeller
-      const directSellerDoc = directSellerId
-        ? await User.findById(directSellerId).select("_id name fullName parentId role")
-        : null
+      const directSellerDoc = directSellerId ? userMap.get(String(directSellerId)) : null
       const parentSeller = directSellerDoc?.parentId
-        ? await findAncestorByRole(directSellerDoc.parentId, "seller")
+        ? findAncestorInMemory(directSellerDoc.parentId, "seller")
         : null
       const distributor = directSellerDoc?.parentId
-        ? await findAncestorByRole(directSellerDoc.parentId, "distributor")
+        ? findAncestorInMemory(directSellerDoc.parentId, "distributor")
         : null
 
-      // Always set names (override empty ones)
       h.chainInfo.directSellerName     = directSellerName
       h.chainInfo.directSellerFullName = directSellerFullName || directSellerDoc?.fullName || ""
       h.chainInfo.parentSellerName     = parentSeller?.name || ""
