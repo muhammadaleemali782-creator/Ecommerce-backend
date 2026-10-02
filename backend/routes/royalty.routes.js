@@ -78,7 +78,7 @@ router.get("/status", protect, allowRoles("admin", "distributor"), async (req, r
       },
       distributors: req.user.role === "admin" ? distributors : undefined,
       myHistory,
-      myRoyaltyWallet: req.user.role === "distributor" ? (req.user.royaltyWallet || 0) : 0
+      myRoyaltyWallet: req.user.role === "distributor" ? ((await User.findById(req.user.id).select("royaltyWallet"))?.royaltyWallet || 0) : 0
     })
   } catch (err) {
     console.error("Royalty status error:", err)

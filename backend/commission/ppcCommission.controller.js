@@ -498,7 +498,7 @@ export const getMyPPCWallet = async (req, res) => {
     if (!req.user?.id) return res.status(401).json({ message: "Unauthorized" })
 
     const user = await User.findById(req.user.id)
-      .select("name fullName role distributorWallet sellerWallet sellerWalletAsSeller userWalletAsSeller totalPPCEarned totalWithdrawn")
+      .select("name fullName role distributorWallet sellerWallet sellerWalletAsSeller userWalletAsSeller royaltyWallet totalPPCEarned totalWithdrawn")
     if (!user) return res.status(404).json({ message: "User not found" })
 
     const settings = await PPCSettings.getSettings()
@@ -612,6 +612,7 @@ export const getMyPPCWallet = async (req, res) => {
         const sourceLabel = isFromUser ? "Direct User" : "Direct Seller"
         return {
           ...h,
+          items:           h.orderId?.items || [],
           ppcCount:        h.ppcCount || 0,
           remainingPPC:    h.remainingPPC,
           rupeeValue:      h.rupeeValue || 0,
