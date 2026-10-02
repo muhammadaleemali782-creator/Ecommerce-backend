@@ -708,6 +708,15 @@ export const getMyPPCWallet = async (req, res) => {
           withdrawable:   true,
           note:           "Seller network se aaya — withdraw ho sakta hai"
         },
+        royaltyWallet: {
+          label:          "Royalty Cash Wallet",
+          isCash:         true,
+          ppcCount:       0,
+          rupeeBalance:   user.royaltyWallet || 0,
+          estimatedValue: user.royaltyWallet || 0,
+          withdrawable:   true,
+          note:           "Company Lifetime Royalty Pool se direct mila ₹ cash — withdraw ho sakta hai"
+        },
       }
     }
 

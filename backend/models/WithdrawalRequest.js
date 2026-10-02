@@ -38,7 +38,8 @@ const withdrawalRequestSchema = new mongoose.Schema(
         "sellerWallet",
         "sellerWalletAsSeller",
         "userWallet",
-        "userWalletAsSeller"
+        "userWalletAsSeller",
+        "royaltyWallet"
       ],
       required: true,
       index: true

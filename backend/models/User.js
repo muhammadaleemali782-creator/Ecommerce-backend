@@ -229,6 +229,27 @@ const userSchema = new mongoose.Schema(
     },
 
     /* =====================================================
+       ⭐ ROYALTY CASH WALLET (Direct ₹ Rupees, Non-PPC)
+    ===================================================== */
+    royaltyWallet: {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+
+    totalRoyaltyEarned: {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+
+    totalRoyaltyWithdrawn: {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+
+    /* =====================================================
        ⭐ PPC TRACKING
     ===================================================== */
     totalPPCEarned: {

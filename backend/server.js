@@ -7,6 +7,7 @@ dotenv.config()
 import mongoose from "mongoose"
 import { getFirebaseAdmin } from "./utils/firebaseAdmin.js"
 import { checkAndRunScheduledPayout } from "./services/salaryPayoutService.js"
+import { checkAndAutoDisburseRoyalty } from "./routes/royalty.routes.js"
 
 // 💚 Server start hote hi ek baar check kar lo Firebase sahi se juda hai ya nahi
 // (asli push bhejne ke time bhi ye hi function call hota hai — yahan sirf status
@@ -18,11 +19,13 @@ mongoose
   .then(async () => {
     console.log("✅ MongoDB connected")
 
-    // 💼 Scheduled check for Monthly Lifetime Salary Payout
+    // 💼 Scheduled check for Monthly Lifetime Salary Payout & Royalty Pool Payout
     setTimeout(() => {
       checkAndRunScheduledPayout().catch(e => console.warn("[SalaryPayout]", e.message))
+      checkAndAutoDisburseRoyalty().catch(e => console.warn("[RoyaltyAutoDisburse]", e.message))
       setInterval(() => {
         checkAndRunScheduledPayout().catch(e => console.warn("[SalaryPayout]", e.message))
+        checkAndAutoDisburseRoyalty().catch(e => console.warn("[RoyaltyAutoDisburse]", e.message))
       }, 6 * 60 * 60 * 1000)
     }, 15000)
     /* ⭐ FIX: UserRequest collection ka MongoDB-level validator clear karo

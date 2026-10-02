@@ -35,11 +35,17 @@ router.post("/request", auth, allowRoles("distributor", "seller"), async (req, r
     
     // Check minimum withdrawal limit
     const settings = await PPCSettings.getSettings()
-    const minPPC = settings?.minimumWithdrawal ?? 1
-    if (amount < minPPC) {
-      return res.status(400).json({ 
-        message: `Minimum withdrawal amount is ${minPPC} PPC` 
-      })
+    if (walletType === "royaltyWallet") {
+      if (amount < 1) {
+        return res.status(400).json({ message: "Minimum withdrawal amount is ₹1" })
+      }
+    } else {
+      const minPPC = settings?.minimumWithdrawal ?? 1
+      if (amount < minPPC) {
+        return res.status(400).json({ 
+          message: `Minimum withdrawal amount is ${minPPC} PPC` 
+        })
+      }
     }
     
     // Get user
@@ -50,9 +56,9 @@ router.post("/request", auth, allowRoles("distributor", "seller"), async (req, r
     
     // Role-based wallet validation
     if (user.role === "distributor") {
-      if (!["sellerWallet"].includes(walletType)) {
+      if (!["sellerWallet", "royaltyWallet"].includes(walletType)) {
         return res.status(400).json({ 
-          message: "Distributor can only withdraw from sellerWallet" 
+          message: "Distributor can only withdraw from sellerWallet or royaltyWallet" 
         })
       }
       
@@ -60,7 +66,7 @@ router.post("/request", auth, allowRoles("distributor", "seller"), async (req, r
       const balance = user[walletType] || 0
       if (amount > balance) {
         return res.status(400).json({ 
-          message: `Insufficient balance. Available: ₹${balance}` 
+          message: `Insufficient balance. Available: ${walletType === "royaltyWallet" ? "₹" : ""}${balance}${walletType !== "royaltyWallet" ? " PPC" : ""}` 
         })
       }
     }
@@ -93,26 +99,29 @@ router.post("/request", auth, allowRoles("distributor", "seller"), async (req, r
       })
     }
 
-    // ⭐ PPC rate us time ka lock karo
-    const currentRate = settings.basePPCValue
+    let currentRate = settings.basePPCValue
+    let percentage = 50
+    let rupeeValue = 0
 
-    // ✅ FIX: Actual avg percentage from commission history
-    let percentage = 50  // default
-    try {
-      const commissions = await Commission.find({ toUser: user._id, status: "approved" })
-        .select("percentageShare ppcCount")
-      if (commissions.length > 0) {
-        const totalPPC    = commissions.reduce((s, c) => s + (c.ppcCount || 0), 0)
-        const weightedPct = commissions.reduce((s, c) => s + (c.percentageShare || 50) * (c.ppcCount || 0), 0)
-        percentage = totalPPC > 0 ? Math.round(weightedPct / totalPPC) : 50
+    if (walletType === "royaltyWallet") {
+      currentRate = 1
+      percentage = 100
+      rupeeValue = Number(amount)
+    } else {
+      try {
+        const commissions = await Commission.find({ toUser: user._id, status: "approved" })
+          .select("percentageShare ppcCount")
+        if (commissions.length > 0) {
+          const totalPPC    = commissions.reduce((s, c) => s + (c.ppcCount || 0), 0)
+          const weightedPct = commissions.reduce((s, c) => s + (c.percentageShare || 50) * (c.ppcCount || 0), 0)
+          percentage = totalPPC > 0 ? Math.round(weightedPct / totalPPC) : 50
+        }
+      } catch (e) {
+        console.error("Commission lookup error:", e.message)
+        percentage = 50
       }
-    } catch (e) {
-      console.error("Commission lookup error:", e.message)
-      percentage = 50
+      rupeeValue = Number(amount) * (Number(currentRate) || 0) * (Number(percentage) / 100)
     }
-
-    // Calculate locked rupee value
-    const rupeeValue = Number(amount) * (Number(currentRate) || 0) * (Number(percentage) / 100)
 
     // Create request with zero local storage
     const request = await WithdrawalRequest.create({
@@ -136,6 +145,7 @@ router.post("/request", auth, allowRoles("distributor", "seller"), async (req, r
     const webhookUrl = settings?.googleSheetWebhookUrl || process.env.GOOGLE_SHEET_WEBHOOK_URL
     if (webhookUrl) {
       const originWallet = 
+        walletType === "royaltyWallet" ? "Royalty Cash Wallet" :
         walletType === "userWalletAsSeller" ? "User Wallet" :
         walletType === "sellerWalletAsSeller" ? "Direct Seller Wallet" :
         walletType === "sellerWallet" ? "Direct Seller Wallet" :
@@ -364,12 +374,16 @@ router.post("/admin/approve/:id", auth, allowRoles("admin"), async (req, res) =>
     
     user[request.walletType] = walletBalance - request.amount
     
-    // ⭐ Purani locked rate se rupee value calculate karo
-    const lockedRate = request.ppcRateAtRequest || 0
-    const lockedPercentage = request.percentageAtRequest || 50
-    const rupeesPaid = request.amount * lockedRate * (lockedPercentage / 100)
-
-    user.totalWithdrawn = (user.totalWithdrawn || 0) + request.amount
+    let rupeesPaid = 0
+    if (request.walletType === "royaltyWallet") {
+      rupeesPaid = request.amount
+      user.totalRoyaltyWithdrawn = (user.totalRoyaltyWithdrawn || 0) + request.amount
+    } else {
+      const lockedRate = request.ppcRateAtRequest || 0
+      const lockedPercentage = request.percentageAtRequest || 50
+      rupeesPaid = request.amount * lockedRate * (lockedPercentage / 100)
+      user.totalWithdrawn = (user.totalWithdrawn || 0) + request.amount
+    }
     await user.save()
     
     // Approve request
@@ -377,7 +391,7 @@ router.post("/admin/approve/:id", auth, allowRoles("admin"), async (req, res) =>
     await request.save()
     
     console.log("✅ Withdrawal approved:", request._id)
-    console.log(`💰 Paid: ${request.amount} PPC × ₹${lockedRate} × ${lockedPercentage}% = ₹${rupeesPaid.toFixed(2)} | UTR: ${finalUtr}`)
+    console.log(`💰 Paid: ${request.walletType === "royaltyWallet" ? `₹${rupeesPaid}` : `${request.amount} PPC × ₹${request.ppcRateAtRequest} × ${request.percentageAtRequest}% = ₹${rupeesPaid.toFixed(2)}`} | UTR: ${finalUtr}`)
 
     // 📊 Sync approval to Google Sheet
     try {
