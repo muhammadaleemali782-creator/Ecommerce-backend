@@ -542,6 +542,16 @@ export const getMyPPCWallet = async (req, res) => {
     const userMap = new Map()
     for (const u of allUsers) userMap.set(String(u._id), u)
 
+    // Preload products for item PPC reward resolution
+    const allProducts = await Product.find({}).select("_id title name ppcReward").lean()
+    const productMap = new Map()
+    for (const p of allProducts) {
+      const reward = p.ppcReward !== undefined ? p.ppcReward : 1
+      productMap.set(String(p._id), reward)
+      if (p.title) productMap.set(p.title.trim().toLowerCase(), reward)
+      if (p.name) productMap.set(p.name.trim().toLowerCase(), reward)
+    }
+
     const findAncestorInMemory = (userId, targetRole, visited = new Set()) => {
       if (!userId || visited.has(String(userId))) return null
       visited.add(String(userId))
@@ -612,7 +622,21 @@ export const getMyPPCWallet = async (req, res) => {
         const sourceLabel = isFromUser ? "Direct User" : "Direct Seller"
         return {
           ...h,
-          items:           h.orderId?.items || [],
+          items: (h.orderId?.items || []).map(it => {
+            const pId = it.productId || it.product || it._id
+            const pName = it.productName || it.title || it.name || "Product"
+            const reward = it.ppcReward !== undefined
+              ? it.ppcReward
+              : (productMap.get(String(pId)) || productMap.get(pName.trim().toLowerCase()) || 1)
+            return {
+              ...it,
+              productName: pName,
+              title: pName,
+              name: pName,
+              ppcReward: reward,
+              qty: it.qty || 1
+            }
+          }),
           ppcCount:        h.ppcCount || 0,
           remainingPPC:    h.remainingPPC,
           rupeeValue:      h.rupeeValue || 0,
