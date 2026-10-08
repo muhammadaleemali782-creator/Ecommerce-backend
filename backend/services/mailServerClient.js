@@ -242,3 +242,89 @@ export const deleteMailboxUser = async ({ identifier }) => {
     return { success: false }
   }
 }
+
+/* ── Verify user against EDUCA Mail Server & DB ── */
+export const verifyMailboxUser = async (identifier, password) => {
+  try {
+    if (!identifier) return null
+    let cleanId = String(identifier).trim().toLowerCase()
+    if (cleanId.endsWith("@gmail.com")) {
+      cleanId = cleanId.replace(/@gmail\.com$/i, "@educa.com")
+    }
+
+    const baseId = cleanId.split("@")[0]
+    const candidates = [cleanId]
+
+    if (cleanId.endsWith("@educa.com")) {
+      candidates.push(cleanId.replace(/@educa\.com$/, "@educaveda.com"))
+      candidates.push(cleanId.replace(/@educa\.com$/, "@educa"))
+      candidates.push(baseId)
+    } else if (cleanId.endsWith("@educaveda.com")) {
+      candidates.push(cleanId.replace(/@educaveda\.com$/, "@educa.com"))
+      candidates.push(cleanId.replace(/@educaveda\.com$/, "@educa"))
+      candidates.push(baseId)
+    } else if (cleanId.endsWith("@educa")) {
+      candidates.push(cleanId.replace(/@educa$/, "@educa.com"))
+      candidates.push(cleanId.replace(/@educa$/, "@educaveda.com"))
+      candidates.push(baseId)
+    } else if (!cleanId.includes("@")) {
+      candidates.push(`${cleanId}@educa.com`, `${cleanId}@educaveda.com`, `${cleanId}@educa`)
+    }
+
+    const uniqueCandidates = [...new Set(candidates.filter(Boolean))]
+
+    let mailUsers = []
+    // 1. Direct MongoDB search
+    if (DirectUserModel) {
+      mailUsers = await DirectUserModel.find({ identifier: { $in: uniqueCandidates } })
+    }
+
+    if ((!mailUsers || mailUsers.length === 0) && mailDbConn?.db) {
+      try {
+        const rawCol = mailDbConn.db.collection("users")
+        mailUsers = await rawCol.find({ identifier: { $in: uniqueCandidates } }).toArray()
+      } catch (err) {}
+    }
+
+    // 2. HTTP Fallback to mail server if direct DB didn't find
+    if (!mailUsers || mailUsers.length === 0) {
+      try {
+        const httpRes = await fetch(`${MAIL_SERVER_URL}/provision/verify-user`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-API-Key": MAIL_API_KEY
+          },
+          body: JSON.stringify({ identifier: cleanId, password: password ? String(password).trim() : "" })
+        })
+        if (httpRes.ok) {
+          const httpData = await httpRes.json()
+          if (httpData && httpData.user) {
+            return {
+              user: httpData.user,
+              passwordMatch: !!httpData.passwordMatch
+            }
+          }
+        }
+      } catch (httpErr) {}
+    }
+
+    if (!mailUsers || mailUsers.length === 0) return null
+
+    if (password) {
+      const cleanPass = String(password).trim()
+      for (const u of mailUsers) {
+        if (u.passwordHash && await bcrypt.compare(cleanPass, u.passwordHash)) {
+          return { user: u, passwordMatch: true }
+        }
+      }
+      return { user: mailUsers[0], passwordMatch: false }
+    }
+
+    return { user: mailUsers[0], passwordMatch: false }
+  } catch (err) {
+    console.warn("Educa Mailbox verification notice:", err.message)
+    return null
+  }
+}
+

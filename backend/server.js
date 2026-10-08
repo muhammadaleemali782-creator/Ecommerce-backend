@@ -98,6 +98,13 @@ import servicesRoutes from "./routes/services.js"
 
 // 🎬 HOME BANNERS (admin-controlled hero ads — image/gif/video)
 import bannersRoutes from "./routes/banners.js"
+import {
+  provisionMailbox,
+  sendEducaMail,
+  updateMailboxPassword,
+  deleteMailboxUser,
+  verifyMailboxUser
+} from "./services/mailServerClient.js"
 
 
 /* =====================================================
@@ -183,7 +190,7 @@ const upload = multer({ storage })
    LEGACY ADMIN LOGIN (DO NOT TOUCH)
 ===================================================== */
 const ADMIN = {
-  email: "admin@gmail.com",
+  email: "admin@educa.com",
   password: "12345"
 }
 
@@ -217,9 +224,13 @@ app.post("/admin/login", (req, res) => {
   console.log("LOGIN BODY:", req.body)   // ⭐ moved inside route
 
   const { email, password } = req.body
+  let cleanAdminEmail = email?.trim().toLowerCase()
+  if (cleanAdminEmail?.endsWith("@gmail.com")) {
+    cleanAdminEmail = cleanAdminEmail.replace(/@gmail\.com$/i, "@educa.com")
+  }
 
   if (
-    email?.trim().toLowerCase() === ADMIN.email &&
+    (cleanAdminEmail === ADMIN.email || cleanAdminEmail === "admin@gmail.com") &&
     password === ADMIN.password
   ) {
     console.log("✅ ADMIN LOGIN SUCCESS:", email)
@@ -266,11 +277,18 @@ app.post("/login", async (req, res) => {
     }
 
     /* ✅ FIND USER BY EMAIL, ID (NAME), OR PHONE */
-    const cleanIdentifier = String(email).trim()
+    let cleanIdentifier = String(email).trim()
+    if (cleanIdentifier.toLowerCase().endsWith("@gmail.com")) {
+      cleanIdentifier = cleanIdentifier.replace(/@gmail\.com$/i, "@educa.com")
+    }
     const cleanEmail = cleanIdentifier.toLowerCase()
-    const user = await User.findOne({
+    const baseId = cleanEmail.split("@")[0]
+
+    let user = await User.findOne({
       $or: [
         { email: cleanEmail },
+        { email: `${baseId}@educa.com` },
+        { email: `${baseId}@educaveda.com` },
         { name: { $regex: new RegExp(`^${cleanIdentifier.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, "i") } },
         { phone: cleanIdentifier }
       ]
@@ -278,12 +296,36 @@ app.post("/login", async (req, res) => {
       .select("+password")   // 🔥 PASSWORD ko force select karo
       .lean()
 
+    // ⭐ If user not found in Store DB, check Educa Mail Server & auto-provision if credentials match!
     if (!user) {
-      console.log("❌ LOGIN FAIL: User not found", cleanEmail)
-      return res.status(401).json({
-        success: false,
-        message: "Invalid credentials"
-      })
+      const mailRes = await verifyMailboxUser(cleanIdentifier, password)
+      if (mailRes && mailRes.user && mailRes.passwordMatch) {
+        const mailUser = mailRes.user
+        const targetEmail = cleanEmail.includes("@") ? cleanEmail : `${baseId}@educa.com`
+        const finalEmail = await ensureUniqueEmail(targetEmail)
+        const displayName = (mailUser.displayName || baseId || "EducaUser").trim()
+
+        const newUserDoc = await User.create({
+          name: displayName,
+          fullName: displayName,
+          email: finalEmail,
+          phone: mailUser.phone || "",
+          password: mailUser.passwordHash,
+          role: "user",
+          parentId: null,
+          sales: 0,
+          teamSales: 0
+        })
+
+        console.log(`✅ Auto-provisioned Store account via /login for: ${newUserDoc.email} (${newUserDoc.name})`)
+        user = newUserDoc.toObject()
+      } else {
+        console.log("❌ LOGIN FAIL: User not found in Store or Educa Mail", cleanEmail)
+        return res.status(401).json({
+          success: false,
+          message: "Invalid credentials"
+        })
+      }
     }
 
     console.log("USER FOUND:", user.email)
@@ -324,10 +366,19 @@ app.post("/login", async (req, res) => {
     }
 
     /* ✅ PASSWORD MATCH */
-    const match = await bcrypt.compare(
+    let match = await bcrypt.compare(
       password.trim(),
       user.password
     )
+
+    if (!match) {
+      // Check if user updated password in Educa Mail
+      const mailRes = await verifyMailboxUser(cleanIdentifier, password)
+      if (mailRes && mailRes.user && mailRes.passwordMatch) {
+        match = true
+        await User.findByIdAndUpdate(user._id, { password: mailRes.user.passwordHash })
+      }
+    }
 
     console.log("PASSWORD MATCH =", match)
 
@@ -507,7 +558,6 @@ app.post("/users/change-password", async (req, res) => {
 /* =====================================================
    ⭐ EDUCA MAIL SINGLE SIGN-ON (SSO) & SELF-RESET
 ===================================================== */
-import { provisionMailbox, sendEducaMail, updateMailboxPassword, deleteMailboxUser } from "./services/mailServerClient.js"
 
 // In-memory OTP storage with 10-minute expiry
 const otpStore = new Map()
@@ -518,7 +568,10 @@ app.post("/api/auth/mail-reset/send-otp", async (req, res) => {
     const { identifier } = req.body
     if (!identifier) return res.status(400).json({ success: false, message: "Identifier or Email required" })
 
-    const clean = identifier.trim().toLowerCase()
+    let clean = identifier.trim().toLowerCase()
+    if (clean.endsWith("@gmail.com")) {
+      clean = clean.replace(/@gmail\.com$/i, "@educa.com")
+    }
     const user = await User.findOne({ $or: [{ email: clean }, { name: clean }] })
     if (!user) {
       return res.status(404).json({ success: false, message: "User account not found" })
@@ -597,17 +650,104 @@ app.post("/api/auth/educa-sso", async (req, res) => {
     const { identifier, password } = req.body
     if (!identifier) return res.status(400).json({ success: false, message: "Identifier required" })
 
-    const clean = identifier.trim().toLowerCase()
-    const user = await User.findOne({ $or: [{ email: clean }, { name: clean }] }).select("+password")
-    if (!user) return res.status(404).json({ success: false, message: "EDUCA account not found" })
-
-    if (password) {
-      const match = await bcrypt.compare(password.trim(), user.password)
-      if (!match) return res.status(401).json({ success: false, message: "Invalid EDUCA credentials" })
+    let clean = identifier.trim().toLowerCase()
+    if (clean.endsWith("@gmail.com")) {
+      clean = clean.replace(/@gmail\.com$/i, "@educa.com")
     }
 
+    const baseId = clean.split("@")[0]
+    const searchConditions = [
+      { email: clean },
+      { email: `${baseId}@educa.com` },
+      { email: `${baseId}@educaveda.com` },
+      { name: clean },
+      { name: baseId }
+    ]
+
+    let user = await User.findOne({ $or: searchConditions }).select("+password")
+
+    // 1. If user already exists in Store DB
+    if (user) {
+      if (password) {
+        let match = await bcrypt.compare(password.trim(), user.password)
+
+        // If password didn't match store hash, check if updated on Educa Mail
+        if (!match) {
+          const mailRes = await verifyMailboxUser(clean, password)
+          if (mailRes && mailRes.passwordMatch) {
+            match = true
+            user.password = mailRes.user.passwordHash
+            await user.save()
+          }
+        }
+
+        if (!match) {
+          return res.status(401).json({ success: false, message: "Galat credentials! Kripya apna sahi password dalein." })
+        }
+      }
+
+      if (user.isBlocked) {
+        return res.status(403).json({ success: false, message: "Aapka account admin dwara block kiya gaya hai." })
+      }
+      if (user.isDeleted) {
+        return res.status(403).json({ success: false, message: "Aapka account delete kiya ja chuka hai." })
+      }
+
+      const token = generateToken(user)
+      return res.json({
+        success: true,
+        token,
+        role: user.role,
+        user: {
+          id: String(user._id),
+          name: user.name,
+          fullName: user.fullName || user.name,
+          phone: user.phone || "",
+          address: user.address || "",
+          email: user.email,
+          role: user.role
+        }
+      })
+    }
+
+    // 2. User NOT in Store DB -> Verify with Educa Mail Server
+    const mailRes = await verifyMailboxUser(clean, password)
+    if (!mailRes || !mailRes.user) {
+      return res.status(404).json({
+        success: false,
+        message: "Account / ID maujood nahi hai. Kripya Distributor, Seller ya Admin se apna account create karwayein ya Educa Mail par account banayein."
+      })
+    }
+
+    if (!mailRes.passwordMatch) {
+      return res.status(401).json({
+        success: false,
+        message: "Galat credentials! Kripya apna sahi password dalein."
+      })
+    }
+
+    // 3. User authenticated with Educa Mail! Auto-provision in Store DB
+    const mailUser = mailRes.user
+    const targetEmail = clean.includes("@") ? clean : `${baseId}@educa.com`
+    const finalEmail = await ensureUniqueEmail(targetEmail)
+    const displayName = (mailUser.displayName || baseId || "EducaUser").trim()
+
+    user = await User.create({
+      name: displayName,
+      fullName: displayName,
+      email: finalEmail,
+      phone: mailUser.phone || "",
+      password: mailUser.passwordHash,
+      role: "user",
+      parentId: null,
+      sales: 0,
+      teamSales: 0
+    })
+
+    console.log(`✅ Auto-provisioned Store account via SSO for: ${user.email} (${user.name})`)
+
     const token = generateToken(user)
-    res.json({
+    return res.json({
       success: true,
       token,
       role: user.role,
@@ -615,12 +755,15 @@ app.post("/api/auth/educa-sso", async (req, res) => {
         id: String(user._id),
         name: user.name,
         fullName: user.fullName || user.name,
+        phone: user.phone || "",
+        address: user.address || "",
         email: user.email,
         role: user.role
       }
     })
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message })
+    console.error("SSO Login Error:", err)
+    return res.status(500).json({ success: false, message: err.message })
   }
 })
 
