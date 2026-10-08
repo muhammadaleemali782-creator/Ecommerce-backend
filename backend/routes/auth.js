@@ -13,7 +13,7 @@ router.get("/seed", async(req,res)=>{
   const hash = await bcrypt.hash("admin123",10)
   await User.create({
     name:"Admin",
-    email:"admin@gmail.com",
+    email:"admin@educa.com",
     password:hash,
     role:"admin"
   })
@@ -22,7 +22,10 @@ router.get("/seed", async(req,res)=>{
 
 // LOGIN
 router.post("/login", async(req,res)=>{
-  const { email, password } = req.body
+  let { email, password } = req.body
+  if (email && email.toLowerCase().endsWith("@gmail.com")) {
+    email = email.replace(/@gmail\.com$/i, "@educa.com")
+  }
   const user = await User.findOne({ email })
   if(!user) return res.json({success:false})
 
