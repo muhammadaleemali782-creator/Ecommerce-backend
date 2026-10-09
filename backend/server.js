@@ -296,36 +296,13 @@ app.post("/login", async (req, res) => {
       .select("+password")   // 🔥 PASSWORD ko force select karo
       .lean()
 
-    // ⭐ If user not found in Store DB, check Educa Mail Server & auto-provision if credentials match!
+    // ⭐ User must already exist in Store DB to log in!
     if (!user) {
-      const mailRes = await verifyMailboxUser(cleanIdentifier, password)
-      if (mailRes && mailRes.user && mailRes.passwordMatch) {
-        const mailUser = mailRes.user
-        const targetEmail = cleanEmail.includes("@") ? cleanEmail : `${baseId}@educa.com`
-        const finalEmail = await ensureUniqueEmail(targetEmail)
-        const displayName = (mailUser.displayName || baseId || "EducaUser").trim()
-
-        const newUserDoc = await User.create({
-          name: displayName,
-          fullName: displayName,
-          email: finalEmail,
-          phone: mailUser.phone || "",
-          password: mailUser.passwordHash,
-          role: "user",
-          parentId: null,
-          sales: 0,
-          teamSales: 0
-        })
-
-        console.log(`✅ Auto-provisioned Store account via /login for: ${newUserDoc.email} (${newUserDoc.name})`)
-        user = newUserDoc.toObject()
-      } else {
-        console.log("❌ LOGIN FAIL: User not found in Store or Educa Mail", cleanEmail)
-        return res.status(401).json({
-          success: false,
-          message: "Invalid credentials"
-        })
-      }
+      console.log("❌ LOGIN FAIL: User not found in Store", cleanEmail)
+      return res.status(401).json({
+        success: false,
+        message: "Account / ID maujood nahi hai. Kripya Distributor, Seller ya Admin se apna account create karwayein ya registration link use karein."
+      })
     }
 
     console.log("USER FOUND:", user.email)
@@ -710,56 +687,10 @@ app.post("/api/auth/educa-sso", async (req, res) => {
       })
     }
 
-    // 2. User NOT in Store DB -> Verify with Educa Mail Server
-    const mailRes = await verifyMailboxUser(clean, password)
-    if (!mailRes || !mailRes.user) {
-      return res.status(404).json({
-        success: false,
-        message: "Account / ID maujood nahi hai. Kripya Distributor, Seller ya Admin se apna account create karwayein ya Educa Mail par account banayein."
-      })
-    }
-
-    if (!mailRes.passwordMatch) {
-      return res.status(401).json({
-        success: false,
-        message: "Galat credentials! Kripya apna sahi password dalein."
-      })
-    }
-
-    // 3. User authenticated with Educa Mail! Auto-provision in Store DB
-    const mailUser = mailRes.user
-    const targetEmail = clean.includes("@") ? clean : `${baseId}@educa.com`
-    const finalEmail = await ensureUniqueEmail(targetEmail)
-    const displayName = (mailUser.displayName || baseId || "EducaUser").trim()
-
-    user = await User.create({
-      name: displayName,
-      fullName: displayName,
-      email: finalEmail,
-      phone: mailUser.phone || "",
-      password: mailUser.passwordHash,
-      role: "user",
-      parentId: null,
-      sales: 0,
-      teamSales: 0
-    })
-
-    console.log(`✅ Auto-provisioned Store account via SSO for: ${user.email} (${user.name})`)
-
-    const token = generateToken(user)
-    return res.json({
-      success: true,
-      token,
-      role: user.role,
-      user: {
-        id: String(user._id),
-        name: user.name,
-        fullName: user.fullName || user.name,
-        phone: user.phone || "",
-        address: user.address || "",
-        email: user.email,
-        role: user.role
-      }
+    // 2. User NOT in Store DB -> Access Denied (Educa Mail accounts cannot enter Store without prior Store registration)
+    return res.status(404).json({
+      success: false,
+      message: "Educa Store account maujood nahi hai. Educa Mail par ID hone ke bawajood aapka Store account alag se hona zaroori hai. Kripya Distributor, Seller ya Admin se account create karwayein."
     })
   } catch (err) {
     console.error("SSO Login Error:", err)
